@@ -1,0 +1,5 @@
+Django>=5.0
+pandas>=2.0
+openpyxl>=3.1
+django-jazzmin>=3.0
+weasyprint>=60.0
