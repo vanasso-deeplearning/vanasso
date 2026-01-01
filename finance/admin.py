@@ -1,13 +1,32 @@
 from django.contrib import admin
+from django.urls import path
+from django.shortcuts import redirect
+from django.contrib import messages
+from django.db import transaction
+from django.db.models import Sum
+from django.template.response import TemplateResponse
+from decimal import Decimal
+import pandas as pd
+
 from .models import Account, Member, Budget, FixedAsset, Transaction, Settlement
+
+
+# 4대보험 구성 항목 (합산 대상)
+INSURANCE_ITEMS = ['국민연금', '건강보험', '고용보험', '산재보험']
+
+# 계정코드 자동 생성용 카운터
+ACCOUNT_CODE_PREFIX = {
+    '인건비': '1',
+    '사업비': '2',
+}
 
 
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
-    list_display = ['code', 'category_large', 'category_small', 'account_type', 'is_active']
-    list_filter = ['account_type', 'is_active', 'category_large']
-    search_fields = ['code', 'category_small']
-    ordering = ['code']
+    list_display = ['fiscal_year', 'code', 'category_large', 'category_medium', 'category_small', 'account_name', 'account_name2', 'is_active']
+    list_filter = ['fiscal_year', 'category_large', 'is_active']
+    search_fields = ['code', 'account_name', 'category_small']
+    ordering = ['fiscal_year', 'code']
 
 
 @admin.register(Member)
@@ -20,14 +39,256 @@ class MemberAdmin(admin.ModelAdmin):
 
 @admin.register(Budget)
 class BudgetAdmin(admin.ModelAdmin):
-    list_display = ['fiscal_year', 'account', 'annual_amount', 'supplementary_amount', 'get_total_budget']
-    list_filter = ['fiscal_year']
-    search_fields = ['account__category_small']
-    ordering = ['fiscal_year', 'account__code']
+    change_list_template = 'admin/budget_changelist.html'
 
-    @admin.display(description='총 예산액')
-    def get_total_budget(self, obj):
-        return f"₩{obj.total_budget:,.0f}"
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        """예산 메인 페이지 - 연도별 조회 및 엑셀 업로드"""
+        # POST 요청 처리 (조회/삭제)
+        if request.method == 'POST':
+            action = request.POST.get('action')
+            fiscal_year = request.POST.get('view_year')
+
+            if fiscal_year:
+                if action == 'view':
+                    return redirect('admin:budget_view', fiscal_year=fiscal_year)
+                elif action == 'delete':
+                    with transaction.atomic():
+                        budget_count, _ = Budget.objects.filter(fiscal_year=fiscal_year).delete()
+                        account_count, _ = Account.objects.filter(fiscal_year=fiscal_year).delete()
+                    messages.success(request, f'{fiscal_year}년 데이터 삭제 완료: 예산 {budget_count}건, 계정과목 {account_count}건')
+                    return redirect('admin:finance_budget_changelist')
+
+        # 등록된 연도 목록 조회
+        available_years = Budget.objects.values_list('fiscal_year', flat=True).distinct().order_by('-fiscal_year')
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': '예산 관리',
+            'available_years': available_years,
+            'opts': self.model._meta,
+        }
+
+        return TemplateResponse(request, 'admin/budget_changelist.html', context)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('upload/', self.admin_site.admin_view(self.upload_budget), name='budget_upload'),
+            path('view/<int:fiscal_year>/', self.admin_site.admin_view(self.view_budget), name='budget_view'),
+        ]
+        return custom_urls + urls
+
+    def parse_budget_template(self, df, fiscal_year):
+        """
+        burget_account_template.xlsx 형식 파싱
+        컬럼: 구분(대분류), 구분(중분류), 구분(소분류), 계정명, 계정명2, 연간예산액
+
+        Returns:
+            accounts: 생성할 Account 목록 (4대보험은 합산된 하나의 계정)
+            budgets: 생성할 Budget 목록 (account_name을 키로 사용)
+        """
+        accounts = []
+        budgets = {}  # account_name -> amount
+        insurance_total = Decimal('0')
+        insurance_account_info = None  # 4대보험 계정 정보 저장용
+
+        code_counters = {'인건비': 0, '사업비': 0}
+
+        for _, row in df.iterrows():
+            # 컬럼 매핑
+            category_large = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
+            category_medium = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ''
+            category_small = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else ''
+            account_name = str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else ''
+            account_name2 = str(row.iloc[4]).strip() if pd.notna(row.iloc[4]) and str(row.iloc[4]) != 'nan' else ''
+
+            # 연간예산액 (있으면)
+            try:
+                amount = Decimal(str(row.iloc[5])) if pd.notna(row.iloc[5]) else Decimal('0')
+            except:
+                amount = Decimal('0')
+
+            # 유효성 검사
+            if not category_large or category_large == 'nan' or category_large == '구분(대분류)':
+                continue
+
+            # 4대보험 세부 항목 (계정명2가 있는 경우)
+            if account_name2 and account_name2 in INSURANCE_ITEMS:
+                insurance_total += amount
+                if insurance_account_info is None:
+                    insurance_account_info = {
+                        'category_large': category_large,
+                        'category_medium': category_medium,
+                        'category_small': category_small,
+                        'account_name': account_name,  # '4대보험'
+                    }
+                # 4대보험 세부 항목도 Account로 저장 (account_name2 포함)
+                code_counters[category_large] = code_counters.get(category_large, 0) + 1
+                code = f"{ACCOUNT_CODE_PREFIX.get(category_large, '9')}{code_counters[category_large]:03d}"
+                accounts.append({
+                    'fiscal_year': fiscal_year,
+                    'code': code,
+                    'category_large': category_large,
+                    'category_medium': category_medium,
+                    'category_small': category_small,
+                    'account_name': account_name,
+                    'account_name2': account_name2,
+                    'account_type': 'EXPENSE',
+                })
+                continue
+
+            # 일반 계정
+            code_counters[category_large] = code_counters.get(category_large, 0) + 1
+            code = f"{ACCOUNT_CODE_PREFIX.get(category_large, '9')}{code_counters[category_large]:03d}"
+
+            accounts.append({
+                'fiscal_year': fiscal_year,
+                'code': code,
+                'category_large': category_large,
+                'category_medium': category_medium,
+                'category_small': category_small,
+                'account_name': account_name,
+                'account_name2': '',
+                'account_type': 'EXPENSE',
+            })
+
+            # 예산 금액 저장 (계정명 기준)
+            if account_name not in budgets:
+                budgets[account_name] = amount
+            else:
+                budgets[account_name] += amount
+
+        # 4대보험 합산 예산 추가
+        if insurance_total > 0 and insurance_account_info:
+            budgets[insurance_account_info['account_name']] = insurance_total
+
+        return accounts, budgets
+
+    def upload_budget(self, request):
+        """예산 엑셀 업로드 처리 - Account와 Budget을 함께 생성"""
+        context = {
+            **self.admin_site.each_context(request),
+            'title': '예산 엑셀 업로드',
+            'opts': self.model._meta,
+        }
+
+        if request.method == 'POST':
+            excel_file = request.FILES.get('excel_file')
+            fiscal_year = request.POST.get('fiscal_year')
+
+            if not excel_file or not fiscal_year:
+                messages.error(request, '파일과 회계연도를 모두 입력해주세요.')
+                return TemplateResponse(request, 'admin/budget_upload.html', context)
+
+            try:
+                fiscal_year = int(fiscal_year)
+            except ValueError:
+                messages.error(request, '회계연도는 숫자로 입력해주세요.')
+                return TemplateResponse(request, 'admin/budget_upload.html', context)
+
+            # 해당 연도 데이터 존재 여부 확인
+            existing_accounts = Account.objects.filter(fiscal_year=fiscal_year).count()
+            existing_budgets = Budget.objects.filter(fiscal_year=fiscal_year).count()
+            if existing_accounts > 0 or existing_budgets > 0:
+                context['fiscal_year'] = fiscal_year
+                context['existing_data'] = True
+                context['existing_accounts'] = existing_accounts
+                context['existing_budgets'] = existing_budgets
+                messages.warning(request, f'{fiscal_year}년 데이터가 이미 존재합니다. 기존 데이터를 삭제 후 업로드하거나 다른 연도를 선택해주세요.')
+                return TemplateResponse(request, 'admin/budget_upload.html', context)
+
+            # 엑셀 파일 읽기
+            try:
+                df = pd.read_excel(excel_file)
+            except Exception as e:
+                messages.error(request, f'엑셀 파일 읽기 오류: {e}')
+                return TemplateResponse(request, 'admin/budget_upload.html', context)
+
+            # burget_account_template.xlsx 형식 파싱
+            accounts_data, budgets_data = self.parse_budget_template(df, fiscal_year)
+
+            if not accounts_data:
+                messages.error(request, '계정 데이터를 찾을 수 없습니다. 파일 형식을 확인해주세요.')
+                return TemplateResponse(request, 'admin/budget_upload.html', context)
+
+            # Account 및 Budget 등록
+            with transaction.atomic():
+                account_count = 0
+                budget_count = 0
+
+                # Account 생성
+                for acc_data in accounts_data:
+                    Account.objects.create(**acc_data)
+                    account_count += 1
+
+                # Budget 생성 (account_name 기준으로 Account 찾기, 4대보험은 account_name2가 없는 것 사용)
+                for account_name, amount in budgets_data.items():
+                    if amount > 0:
+                        # 4대보험의 경우 account_name2가 비어있는 행이 없으므로 첫 번째 것 사용
+                        account = Account.objects.filter(
+                            fiscal_year=fiscal_year,
+                            account_name=account_name,
+                            account_name2=''
+                        ).first()
+
+                        # account_name2가 있는 경우 (4대보험 세부항목)는 첫 번째 것 사용
+                        if not account:
+                            account = Account.objects.filter(
+                                fiscal_year=fiscal_year,
+                                account_name=account_name
+                            ).first()
+
+                        if account:
+                            Budget.objects.create(
+                                fiscal_year=fiscal_year,
+                                account=account,
+                                annual_amount=amount,
+                                supplementary_amount=Decimal('0'),
+                            )
+                            budget_count += 1
+
+            messages.success(request, f'{fiscal_year}년 업로드 완료: 계정과목 {account_count}건, 예산 {budget_count}건')
+            return redirect('admin:budget_view', fiscal_year=fiscal_year)
+
+        return TemplateResponse(request, 'admin/budget_upload.html', context)
+
+    def view_budget(self, request, fiscal_year):
+        """예산 조회 (2026년 예산.xls 형식)"""
+        budgets = Budget.objects.filter(fiscal_year=fiscal_year).select_related('account').order_by('account__code')
+
+        # 대분류별 그룹화
+        grouped_budgets = {}
+        for budget in budgets:
+            category = budget.account.category_large
+            if category not in grouped_budgets:
+                grouped_budgets[category] = {
+                    'items': [],
+                    'subtotal': Decimal('0'),
+                }
+            grouped_budgets[category]['items'].append(budget)
+            grouped_budgets[category]['subtotal'] += budget.annual_amount
+
+        # 총합계
+        total = budgets.aggregate(total=Sum('annual_amount'))['total'] or 0
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'{fiscal_year}년 예산',
+            'fiscal_year': fiscal_year,
+            'grouped_budgets': grouped_budgets,
+            'total': total,
+            'opts': self.model._meta,
+        }
+        return TemplateResponse(request, 'admin/budget_view.html', context)
 
 
 @admin.register(FixedAsset)

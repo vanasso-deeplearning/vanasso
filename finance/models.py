@@ -3,22 +3,26 @@ from common.constants import ACCOUNT_TYPES, SETTLEMENT_STATUS, DEPRECIATION_METH
 
 
 class Account(models.Model):
-    """계정과목 (AccountSubject)"""
-    code = models.CharField('계정코드', max_length=10, unique=True)
-    category_large = models.CharField('대분류(관)', max_length=50)
+    """계정과목 (AccountSubject) - 연도별로 관리"""
+    fiscal_year = models.IntegerField('회계연도', default=2026)
+    code = models.CharField('계정코드', max_length=10)
+    category_large = models.CharField('대분류(관)', max_length=50)  # 인건비, 사업비
     category_medium = models.CharField('중분류(항)', max_length=50)
     category_small = models.CharField('소분류(목)', max_length=50)
-    account_type = models.CharField('계정성격', max_length=10, choices=ACCOUNT_TYPES)
+    account_name = models.CharField('계정명', max_length=100, default='')  # 실제 계정명
+    account_name2 = models.CharField('계정명2', max_length=100, blank=True)  # 4대보험 세부 항목
+    account_type = models.CharField('계정성격', max_length=10, choices=ACCOUNT_TYPES, default='EXPENSE')
     report_position = models.CharField('결산서 위치', max_length=50, blank=True)
     is_active = models.BooleanField('사용여부', default=True)
 
     class Meta:
         verbose_name = '계정과목'
         verbose_name_plural = '계정과목'
-        ordering = ['code']
+        unique_together = ['fiscal_year', 'code']
+        ordering = ['fiscal_year', 'code']
 
     def __str__(self):
-        return f"[{self.code}] {self.category_small}"
+        return f"[{self.fiscal_year}] [{self.code}] {self.account_name}"
 
 
 class Member(models.Model):

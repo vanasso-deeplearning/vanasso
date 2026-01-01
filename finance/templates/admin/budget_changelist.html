@@ -1,0 +1,67 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div style="display: flex; gap: 30px; margin-top: 20px;">
+    <!-- 연도별 예산 조회 -->
+    <fieldset style="flex: 1; padding: 20px; border: 1px solid #ccc; border-radius: 4px;">
+        <h2 style="margin-top: 0;">연도별 예산 조회</h2>
+        <form method="post" action="" id="budgetForm">
+            {% csrf_token %}
+            <div style="margin-bottom: 15px;">
+                <label for="view_year" style="display: block; margin-bottom: 5px; font-weight: bold;">회계연도:</label>
+                <select name="view_year" id="view_year" style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; width: 100%;">
+                    {% for year in available_years %}
+                    <option value="{{ year }}">{{ year }}년</option>
+                    {% empty %}
+                    <option value="">등록된 예산 없음</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" name="action" value="view" class="btn btn-primary" style="padding: 10px 20px;" {% if not available_years %}disabled{% endif %}>
+                    조회
+                </button>
+                <button type="button" id="deleteBtn" class="btn btn-danger" style="padding: 10px 20px;" {% if not available_years %}disabled{% endif %}>
+                    삭제
+                </button>
+            </div>
+        </form>
+    </fieldset>
+
+    <!-- 엑셀 업로드 예산 추가 -->
+    <fieldset style="flex: 1; padding: 20px; border: 1px solid #ccc; border-radius: 4px;">
+        <h2 style="margin-top: 0;">엑셀 업로드 예산 추가</h2>
+        <p style="color: #666; margin-bottom: 15px;">
+            2026년 예산.xls 형식의 엑셀 파일을 업로드하여 예산을 추가합니다.
+        </p>
+        <a href="{% url 'admin:budget_upload' %}" class="btn btn-primary" style="padding: 10px 20px; display: inline-block; text-decoration: none;">
+            엑셀 업로드
+        </a>
+    </fieldset>
+</div>
+
+<script>
+document.getElementById('deleteBtn').addEventListener('click', function() {
+    var yearSelect = document.getElementById('view_year');
+    var selectedYear = yearSelect.value;
+
+    if (!selectedYear) {
+        alert('삭제할 연도를 선택해주세요.');
+        return;
+    }
+
+    if (confirm(selectedYear + '년 예산을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.')) {
+        var form = document.getElementById('budgetForm');
+        var actionInput = document.createElement('input');
+        actionInput.type = 'hidden';
+        actionInput.name = 'action';
+        actionInput.value = 'delete';
+        form.appendChild(actionInput);
+        form.submit();
+    }
+});
+</script>
+{% endblock %}

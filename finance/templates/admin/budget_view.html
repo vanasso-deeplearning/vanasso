@@ -1,0 +1,92 @@
+{% extends "admin/base.html" %}
+{% load i18n humanize %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div style="margin-bottom: 20px;">
+    <a href="{% url 'admin:finance_budget_changelist' %}" class="button">← 목록으로</a>
+    <a href="{% url 'admin:budget_upload' %}" class="button" style="margin-left: 10px;">엑셀 업로드</a>
+</div>
+
+<style>
+    .budget-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+    .budget-table th, .budget-table td {
+        border: 1px solid #ddd;
+        padding: 8px 12px;
+        text-align: left;
+    }
+    .budget-table th {
+        background-color: #417690;
+        color: white;
+    }
+    .budget-table .category-header {
+        background-color: #79aec8;
+        font-weight: bold;
+    }
+    .budget-table .subtotal-row {
+        background-color: #f0f0f0;
+        font-weight: bold;
+    }
+    .budget-table .total-row {
+        background-color: #417690;
+        color: white;
+        font-weight: bold;
+        font-size: 1.1em;
+    }
+    .budget-table .amount {
+        text-align: right;
+    }
+    .budget-table tr:hover {
+        background-color: #f5f5f5;
+    }
+    .budget-table .subtotal-row:hover,
+    .budget-table .total-row:hover {
+        background-color: inherit;
+    }
+</style>
+
+<table class="budget-table">
+    <thead>
+        <tr>
+            <th style="width: 12%;">대분류</th>
+            <th style="width: 12%;">중분류</th>
+            <th style="width: 12%;">소분류</th>
+            <th style="width: 34%;">계정명</th>
+            <th style="width: 30%;" class="amount">예산액</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for category, data in grouped_budgets.items %}
+        <tr class="category-header">
+            <td colspan="5">{{ category }}</td>
+        </tr>
+        {% for budget in data.items %}
+        <tr>
+            <td></td>
+            <td>{{ budget.account.category_medium }}</td>
+            <td>{{ budget.account.category_small }}</td>
+            <td>{{ budget.account.account_name }}</td>
+            <td class="amount">₩{{ budget.annual_amount|floatformat:0|intcomma }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal-row">
+            <td colspan="4" style="text-align: right;">{{ category }} 소계</td>
+            <td class="amount">₩{{ data.subtotal|floatformat:0|intcomma }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="total-row">
+            <td colspan="4" style="text-align: right;">총 합계</td>
+            <td class="amount">₩{{ total|floatformat:0|intcomma }}</td>
+        </tr>
+    </tbody>
+</table>
+
+<div style="margin-top: 20px; color: #666; font-size: 0.9em;">
+    <p>※ 금액 단위: 원</p>
+</div>
+{% endblock %}
