@@ -154,8 +154,27 @@ JAZZMIN_SETTINGS = {
         "finance.Account": "fas fa-book",
         "finance.Member": "fas fa-building",
         "finance.Budget": "fas fa-coins",
-        "finance.Transaction": "fas fa-exchange-alt",
+        "finance.Transaction": "fas fa-plus-circle",
         "finance.Settlement": "fas fa-file-invoice-dollar",
         "finance.FixedAsset": "fas fa-warehouse",
     },
+    "custom_links": {
+        "finance": [
+            {
+                "name": "거래내역조회/삭제",
+                "url": "admin:transaction_list",
+                "icon": "fas fa-list",
+            },
+        ],
+    },
+    "order_with_respect_to": [
+        "finance",
+        "finance.Budget",
+        "finance.Transaction",
+        "finance.Account",
+        "finance.Member",
+        "finance.FixedAsset",
+        "finance.Settlement",
+        "auth",
+    ],
 }

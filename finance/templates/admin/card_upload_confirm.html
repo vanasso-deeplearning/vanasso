@@ -1,0 +1,117 @@
+{% extends "admin/base.html" %}
+{% load i18n humanize static %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:card_upload' %}">카드 엑셀 업로드</a></li>
+        <li class="breadcrumb-item active" aria-current="page">계정과목 선택</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<link href="{% static 'admin/css/vendor/select2/select2.min.css' %}" rel="stylesheet">
+<link href="{% static 'admin/css/autocomplete.css' %}" rel="stylesheet">
+<script src="{% static 'admin/js/vendor/jquery/jquery.min.js' %}"></script>
+<script src="{% static 'admin/js/vendor/select2/select2.full.min.js' %}"></script>
+<script src="{% static 'admin/js/vendor/select2/i18n/ko.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+<h1>카드 내역 계정과목 선택</h1>
+
+<div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+    <strong>업로드 결과:</strong> 총 {{ total_count }}건, 합계 ₩{{ total_amount|floatformat:0|intcomma }}
+</div>
+
+<form method="post" action="{% url 'admin:card_upload_save' %}">
+    {% csrf_token %}
+
+    <style>
+        .card-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        .card-table th, .card-table td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        .card-table th {
+            background-color: #417690;
+            color: white;
+        }
+        .card-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .card-table tr:hover {
+            background-color: #f5f5f5;
+        }
+        .card-table .amount {
+            text-align: right;
+        }
+        .card-table .select2-container {
+            width: 100% !important;
+            min-width: 200px;
+        }
+        .card-table .select2-container .select2-selection--single {
+            height: 30px;
+        }
+        .card-table .select2-container .select2-selection--single .select2-selection__rendered {
+            line-height: 28px;
+        }
+    </style>
+
+    <table class="card-table">
+        <thead>
+            <tr>
+                <th style="width: 5%;">No</th>
+                <th style="width: 12%;">이용일자</th>
+                <th style="width: 30%;">가맹점명</th>
+                <th style="width: 15%;" class="amount">금액</th>
+                <th style="width: 38%;">계정과목</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in card_items %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>{{ item.date }}</td>
+                <td>{{ item.description }}</td>
+                <td class="amount">₩{{ item.amount|floatformat:0|intcomma }}</td>
+                <td>
+                    <select name="account_{{ item.index }}" class="account-select">
+                        <option value="">---------</option>
+                        {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.account_name }}{% if account.account_name2 %} ({{ account.account_name2 }}){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="submit-row">
+        <input type="submit" value="저장" class="default">
+        <a href="{% url 'admin:card_upload' %}" class="deletelink" style="margin-left: 10px;">취소</a>
+    </div>
+</form>
+
+<script>
+(function($) {
+    $(document).ready(function() {
+        $('.account-select').select2({
+            allowClear: true,
+            placeholder: '---------',
+            language: 'ko',
+            width: '100%'
+        });
+    });
+})(jQuery);
+</script>
+{% endblock %}

@@ -303,9 +303,170 @@ class FixedAssetAdmin(admin.ModelAdmin):
 class TransactionAdmin(admin.ModelAdmin):
     list_display = ['date', 'transaction_type', 'account', 'description', 'amount', 'payment_method', 'status']
     list_filter = ['transaction_type', 'payment_method', 'status', 'date']
-    search_fields = ['description', 'account__category_small']
+    search_fields = ['description', 'account__account_name']
+    autocomplete_fields = ['account']
     date_hierarchy = 'date'
     ordering = ['-date', '-created_at']
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('list/', self.admin_site.admin_view(self.transaction_list_view), name='transaction_list'),
+            path('card-upload/', self.admin_site.admin_view(self.card_upload_view), name='card_upload'),
+            path('card-upload/save/', self.admin_site.admin_view(self.card_upload_save), name='card_upload_save'),
+        ]
+        return custom_urls + urls
+
+    def changelist_view(self, request, extra_context=None):
+        """거래내역추가 메뉴 클릭 시 바로 추가 폼으로 이동"""
+        return redirect('admin:finance_transaction_add')
+
+    def transaction_list_view(self, request):
+        """거래내역 조회/삭제 화면"""
+        return super().changelist_view(request)
+
+    def add_view(self, request, form_url='', extra_context=None):
+        """추가 폼 화면 - 브레드크럼 단순화"""
+        extra_context = extra_context or {}
+        extra_context['title'] = '거래내역추가'
+        extra_context['show_save_and_add_another'] = False
+        return super().add_view(request, form_url, extra_context)
+
+    def card_upload_view(self, request):
+        """카드 엑셀 업로드 화면"""
+        from datetime import datetime
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': '카드 엑셀 업로드',
+            'opts': self.model._meta,
+        }
+
+        if request.method == 'POST' and request.FILES.get('excel_file'):
+            excel_file = request.FILES['excel_file']
+
+            try:
+                df = pd.read_excel(excel_file)
+            except Exception as e:
+                messages.error(request, f'엑셀 파일 읽기 오류: {e}')
+                return TemplateResponse(request, 'admin/card_upload.html', context)
+
+            # 카드 내역 파싱
+            card_items = []
+            for idx, row in df.iterrows():
+                # 취소 건 제외
+                cancel_status = str(row.get('취소\n구분', '')).strip()
+                if cancel_status != '정상':
+                    continue
+
+                # 이용일자 파싱 (2025.11.02 형식)
+                date_str = str(row.get('이용일자', '')).strip()
+                try:
+                    date_obj = datetime.strptime(date_str, '%Y.%m.%d').date()
+                except:
+                    continue
+
+                # 매출금액
+                try:
+                    amount = Decimal(str(row.get('매출금액', 0)))
+                except:
+                    amount = Decimal('0')
+
+                if amount <= 0:
+                    continue
+
+                card_items.append({
+                    'index': idx,
+                    'date': date_obj,
+                    'description': str(row.get('가맹점명', '')).strip(),
+                    'amount': amount,
+                    'card_number': str(row.get('카드번호', '')).strip(),
+                })
+
+            if not card_items:
+                messages.error(request, '유효한 카드 내역이 없습니다.')
+                return TemplateResponse(request, 'admin/card_upload.html', context)
+
+            # 현재 연도 계정과목 조회
+            current_year = datetime.now().year
+            accounts = Account.objects.filter(
+                fiscal_year=current_year,
+                account_type='EXPENSE'
+            ).order_by('code')
+
+            # 계정과목이 없으면 전체 조회
+            if not accounts.exists():
+                accounts = Account.objects.filter(account_type='EXPENSE').order_by('fiscal_year', 'code')
+
+            context['card_items'] = card_items
+            context['accounts'] = accounts
+            context['total_amount'] = sum(item['amount'] for item in card_items)
+            context['total_count'] = len(card_items)
+
+            # 세션에 데이터 저장 (저장 시 사용)
+            request.session['card_items'] = [
+                {
+                    'index': item['index'],
+                    'date': item['date'].isoformat(),
+                    'description': item['description'],
+                    'amount': str(item['amount']),
+                    'card_number': item['card_number'],
+                }
+                for item in card_items
+            ]
+
+            return TemplateResponse(request, 'admin/card_upload_confirm.html', context)
+
+        return TemplateResponse(request, 'admin/card_upload.html', context)
+
+    def card_upload_save(self, request):
+        """카드 내역 일괄 저장"""
+        from datetime import datetime
+
+        if request.method != 'POST':
+            return redirect('admin:card_upload')
+
+        card_items = request.session.get('card_items', [])
+        if not card_items:
+            messages.error(request, '저장할 데이터가 없습니다.')
+            return redirect('admin:card_upload')
+
+        saved_count = 0
+        skipped_count = 0
+
+        with transaction.atomic():
+            for item in card_items:
+                account_id = request.POST.get(f'account_{item["index"]}')
+
+                if not account_id:
+                    skipped_count += 1
+                    continue
+
+                try:
+                    account = Account.objects.get(pk=account_id)
+                    Transaction.objects.create(
+                        date=datetime.fromisoformat(item['date']).date(),
+                        transaction_type='EXPENSE',
+                        account=account,
+                        description=item['description'],
+                        amount=Decimal(item['amount']),
+                        payment_method='CARD',
+                        status='APPROVED',
+                    )
+                    saved_count += 1
+                except Exception as e:
+                    skipped_count += 1
+
+        # 세션 정리
+        if 'card_items' in request.session:
+            del request.session['card_items']
+
+        if saved_count > 0:
+            messages.success(request, f'카드 내역 {saved_count}건 저장 완료' + (f' (미선택 {skipped_count}건 제외)' if skipped_count else ''))
+        else:
+            messages.warning(request, '저장된 내역이 없습니다. 계정과목을 선택해주세요.')
+
+        return redirect('admin:transaction_list')
 
 
 @admin.register(Settlement)

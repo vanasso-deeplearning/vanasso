@@ -1,0 +1,42 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item active" aria-current="page">카드 엑셀 업로드</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div style="margin-bottom: 20px;">
+    <a href="{% url 'admin:finance_transaction_add' %}" class="button">← 거래내역추가</a>
+</div>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <fieldset class="module aligned">
+        <h2>카드 사용 내역 엑셀 업로드</h2>
+
+        <div class="form-row">
+            <label for="excel_file">엑셀 파일:</label>
+            <input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls" required>
+        </div>
+
+        <p class="help">
+            <strong>카드사 엑셀 파일 형식</strong><br>
+            필수 컬럼: 이용일자, 가맹점명, 매출금액, 취소구분<br>
+            ※ 취소구분이 '정상'인 건만 업로드됩니다.
+        </p>
+    </fieldset>
+
+    <div class="submit-row">
+        <input type="submit" value="업로드" class="default">
+    </div>
+</form>
+{% endblock %}

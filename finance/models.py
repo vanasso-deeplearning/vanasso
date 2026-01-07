@@ -133,8 +133,8 @@ class Transaction(models.Model):
     updated_at = models.DateTimeField('수정일시', auto_now=True)
 
     class Meta:
-        verbose_name = '거래내역'
-        verbose_name_plural = '거래내역'
+        verbose_name = '거래내역추가'
+        verbose_name_plural = '거래내역추가'
         ordering = ['-date', '-created_at']
 
     def __str__(self):
