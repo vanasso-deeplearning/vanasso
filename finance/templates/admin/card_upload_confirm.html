@@ -1,4 +1,4 @@
-{% extends "admin/base.html" %}
+{% extends "admin/base_site.html" %}
 {% load i18n humanize static %}
 
 {% block breadcrumbs %}
@@ -6,112 +6,224 @@
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
         <li class="breadcrumb-item"><a href="{% url 'admin:card_upload' %}">카드 엑셀 업로드</a></li>
-        <li class="breadcrumb-item active" aria-current="page">계정과목 선택</li>
+        <li class="breadcrumb-item active">계정과목 선택</li>
     </ol>
 </nav>
 {% endblock %}
 
-{% block extrahead %}
-{{ block.super }}
-<link href="{% static 'admin/css/vendor/select2/select2.min.css' %}" rel="stylesheet">
-<link href="{% static 'admin/css/autocomplete.css' %}" rel="stylesheet">
-<script src="{% static 'admin/js/vendor/jquery/jquery.min.js' %}"></script>
-<script src="{% static 'admin/js/vendor/select2/select2.full.min.js' %}"></script>
-<script src="{% static 'admin/js/vendor/select2/i18n/ko.js' %}"></script>
-{% endblock %}
-
 {% block content %}
-<h1>카드 내역 계정과목 선택</h1>
+<style>
+    .card-container {
+        max-width: 900px;
+    }
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        padding: 8px 12px;
+        background: #f8f9fa;
+        border-radius: 4px;
+        font-size: 13px;
+    }
+    .bulk-apply {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        padding: 6px 10px;
+        background: #e7f1ff;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+    .bulk-apply select {
+        padding: 3px 6px;
+        font-size: 12px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+    }
+    .bulk-apply button {
+        padding: 4px 12px;
+        background: #417690;
+        color: white;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    .bulk-apply button:hover {
+        background: #205067;
+    }
+    .card-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        table-layout: fixed;
+    }
+    .card-table th, .card-table td {
+        border: 1px solid #ddd;
+        padding: 4px 6px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .card-table th {
+        background: #417690;
+        color: white;
+        font-weight: normal;
+        text-align: center;
+    }
+    .card-table tr:nth-child(even) {
+        background: #f9f9f9;
+    }
+    .card-table tr:hover {
+        background: #eef5ff;
+    }
+    .card-table .col-check { width: 28px; text-align: center; }
+    .card-table .col-no { width: 32px; text-align: center; }
+    .card-table .col-date { width: 100px; text-align: center; }
+    .card-table .col-desc { }
+    .card-table .col-amount { width: 85px; text-align: right; }
+    .card-table .col-account { width: 150px; }
+    .card-table select {
+        width: 100%;
+        padding: 2px 4px;
+        font-size: 11px;
+        border: 1px solid #ccc;
+        border-radius: 2px;
+    }
+    .btn-row {
+        margin-top: 10px;
+        padding: 8px 0;
+    }
+    .btn-row .btn {
+        padding: 6px 20px;
+        font-size: 13px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 8px;
+    }
+    .btn-row .btn-primary {
+        background: #417690;
+        color: white;
+    }
+    .btn-row .btn-secondary {
+        background: #6c757d;
+        color: white;
+        text-decoration: none;
+    }
+</style>
 
-<div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
-    <strong>업로드 결과:</strong> 총 {{ total_count }}건, 합계 ₩{{ total_amount|floatformat:0|intcomma }}
+<div class="card-container">
+    <div class="card-header">
+        <span><strong>카드 내역 계정과목 선택</strong></span>
+        <span>총 {{ total_count }}건 / ₩{{ total_amount|floatformat:0|intcomma }}</span>
+    </div>
+
+    <div class="bulk-apply">
+        <span><strong>일괄 적용:</strong></span>
+        <select id="bulk_account">
+            <option value="">계정과목 선택</option>
+            {% for account in accounts %}
+            <option value="{{ account.id }}">{{ account.account_name }}{% if account.account_name2 %}({{ account.account_name2 }}){% endif %}</option>
+            {% endfor %}
+        </select>
+        <button type="button" id="bulk_apply_btn">적용</button>
+        <span style="color: #666;"><span id="checked_count">0</span>건 선택</span>
+    </div>
+
+    <form method="post" action="{% url 'admin:card_upload_save' %}">
+        {% csrf_token %}
+        <table class="card-table">
+            <thead>
+                <tr>
+                    <th class="col-check"><input type="checkbox" id="check_all" title="전체 선택"></th>
+                    <th class="col-no">No</th>
+                    <th class="col-date">이용일자</th>
+                    <th class="col-desc">가맹점명</th>
+                    <th class="col-amount">금액</th>
+                    <th class="col-account">계정과목</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in card_items %}
+                <tr>
+                    <td class="col-check"><input type="checkbox" class="row-check" data-index="{{ item.index }}"></td>
+                    <td class="col-no">{{ forloop.counter }}</td>
+                    <td class="col-date">{{ item.date }}</td>
+                    <td class="col-desc" title="{{ item.description }}">{{ item.description }}</td>
+                    <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
+                    <td class="col-account">
+                        <select name="account_{{ item.index }}" data-index="{{ item.index }}">
+                            <option value="">선택</option>
+                            {% for account in accounts %}
+                            <option value="{{ account.id }}">{{ account.account_name }}{% if account.account_name2 %}({{ account.account_name2 }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="btn-row">
+            <button type="submit" class="btn btn-primary">저장</button>
+            <a href="{% url 'admin:card_upload' %}" class="btn btn-secondary">취소</a>
+        </div>
+    </form>
 </div>
 
-<form method="post" action="{% url 'admin:card_upload_save' %}">
-    {% csrf_token %}
-
-    <style>
-        .card-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-        }
-        .card-table th, .card-table td {
-            border: 1px solid #ddd;
-            padding: 8px 12px;
-            text-align: left;
-        }
-        .card-table th {
-            background-color: #417690;
-            color: white;
-        }
-        .card-table tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        .card-table tr:hover {
-            background-color: #f5f5f5;
-        }
-        .card-table .amount {
-            text-align: right;
-        }
-        .card-table .select2-container {
-            width: 100% !important;
-            min-width: 200px;
-        }
-        .card-table .select2-container .select2-selection--single {
-            height: 30px;
-        }
-        .card-table .select2-container .select2-selection--single .select2-selection__rendered {
-            line-height: 28px;
-        }
-    </style>
-
-    <table class="card-table">
-        <thead>
-            <tr>
-                <th style="width: 5%;">No</th>
-                <th style="width: 12%;">이용일자</th>
-                <th style="width: 30%;">가맹점명</th>
-                <th style="width: 15%;" class="amount">금액</th>
-                <th style="width: 38%;">계정과목</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in card_items %}
-            <tr>
-                <td>{{ forloop.counter }}</td>
-                <td>{{ item.date }}</td>
-                <td>{{ item.description }}</td>
-                <td class="amount">₩{{ item.amount|floatformat:0|intcomma }}</td>
-                <td>
-                    <select name="account_{{ item.index }}" class="account-select">
-                        <option value="">---------</option>
-                        {% for account in accounts %}
-                        <option value="{{ account.id }}">{{ account.account_name }}{% if account.account_name2 %} ({{ account.account_name2 }}){% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    <div class="submit-row">
-        <input type="submit" value="저장" class="default">
-        <a href="{% url 'admin:card_upload' %}" class="deletelink" style="margin-left: 10px;">취소</a>
-    </div>
-</form>
-
 <script>
-(function($) {
-    $(document).ready(function() {
-        $('.account-select').select2({
-            allowClear: true,
-            placeholder: '---------',
-            language: 'ko',
-            width: '100%'
+document.addEventListener('DOMContentLoaded', function() {
+    var checkAll = document.getElementById('check_all');
+    var rowChecks = document.querySelectorAll('.row-check');
+    var checkedCount = document.getElementById('checked_count');
+    var bulkAccount = document.getElementById('bulk_account');
+    var bulkApplyBtn = document.getElementById('bulk_apply_btn');
+
+    function updateCount() {
+        var count = document.querySelectorAll('.row-check:checked').length;
+        checkedCount.textContent = count;
+    }
+
+    checkAll.addEventListener('change', function() {
+        rowChecks.forEach(function(cb) {
+            cb.checked = checkAll.checked;
+        });
+        updateCount();
+    });
+
+    rowChecks.forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            checkAll.checked = document.querySelectorAll('.row-check:checked').length === rowChecks.length;
+            updateCount();
         });
     });
-})(jQuery);
+
+    bulkApplyBtn.addEventListener('click', function() {
+        var accountId = bulkAccount.value;
+        if (!accountId) {
+            alert('계정과목을 선택하세요.');
+            return;
+        }
+
+        var checked = document.querySelectorAll('.row-check:checked');
+        if (checked.length === 0) {
+            alert('적용할 내역을 선택하세요.');
+            return;
+        }
+
+        checked.forEach(function(cb) {
+            var idx = cb.dataset.index;
+            var select = document.querySelector('select[data-index="' + idx + '"]');
+            if (select) {
+                select.value = accountId;
+            }
+        });
+
+        alert(checked.length + '건에 계정과목이 적용되었습니다.');
+    });
+});
 </script>
 {% endblock %}

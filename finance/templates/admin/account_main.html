@@ -11,186 +11,210 @@
 {% endblock %}
 
 {% block content %}
-<h1>계정과목등록(예산입력)</h1>
-
 <style>
-    .account-section {
-        margin-bottom: 30px;
-        padding: 20px;
-        background: #f8f9fa;
-        border-radius: 8px;
-        border-left: 4px solid #417690;
+    .account-main-container {
+        max-width: 800px;
+        margin: 0;
     }
-    .account-section h2 {
-        margin-top: 0;
+    .account-main-container h1 {
+        font-size: 20px;
+        margin-bottom: 20px;
+        color: #333;
+    }
+    .year-box {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 20px;
+        padding: 12px 15px;
+        background: #f0f0f0;
+        border-radius: 4px;
+    }
+    .year-box label {
+        font-weight: bold;
+        font-size: 14px;
+    }
+    .year-box select {
+        padding: 6px 12px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .year-status {
+        margin-left: auto;
+        font-size: 13px;
+        color: #666;
+    }
+    .year-status strong {
+        color: #333;
+    }
+    .delete-btn {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 5px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        margin-left: 10px;
+    }
+    .delete-btn:hover {
+        background: #c82333;
+    }
+    .section-box {
+        display: block;
         margin-bottom: 15px;
-        font-size: 18px;
+        padding: 15px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-left: 4px solid #417690;
+        border-radius: 4px;
+    }
+    .section-box h3 {
+        margin: 0 0 8px 0;
+        font-size: 15px;
         color: #417690;
     }
-    .account-section .form-row {
+    .section-box p {
+        margin: 0 0 12px 0;
+        font-size: 13px;
+        color: #666;
+    }
+    .section-box .file-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
         margin-bottom: 10px;
     }
-    .account-section label {
-        display: inline-block;
-        width: 120px;
+    .section-box .file-row label {
+        font-size: 13px;
         font-weight: bold;
+        min-width: 70px;
     }
-    .template-link {
-        margin-left: 10px;
+    .section-box .file-row input[type="file"] {
         font-size: 12px;
     }
-    .year-selector {
-        margin-bottom: 30px;
-        padding: 15px;
-        background: #e9ecef;
-        border-radius: 8px;
+    .section-box .template-link {
+        font-size: 12px;
+        color: #417690;
     }
-    .year-selector label {
-        font-weight: bold;
-        margin-right: 10px;
+    .section-box .info-text {
+        font-size: 11px;
+        color: #888;
+        background: #f8f9fa;
+        padding: 6px 10px;
+        border-radius: 3px;
+        margin-bottom: 10px;
     }
-    .year-selector select {
-        padding: 8px 15px;
-        font-size: 16px;
-        border-radius: 4px;
-        border: 1px solid #ccc;
-    }
-    .action-buttons {
-        margin-top: 15px;
-    }
-    .action-buttons .button {
+    .section-box .btn {
         display: inline-block;
-        padding: 10px 20px;
-        margin-right: 10px;
+        padding: 6px 16px;
+        font-size: 13px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .section-box .btn-primary {
         background: #417690;
         color: white;
-        text-decoration: none;
-        border-radius: 4px;
-        border: none;
-        cursor: pointer;
     }
-    .action-buttons .button:hover {
+    .section-box .btn-primary:hover {
         background: #205067;
     }
-    .action-buttons .button.secondary {
+    .section-box .btn-secondary {
         background: #6c757d;
+        color: white;
+        margin-left: 8px;
     }
-    .action-buttons .button.secondary:hover {
+    .section-box .btn-secondary:hover {
         background: #545b62;
-    }
-    .info-box {
-        margin-top: 10px;
-        padding: 10px;
-        background: #d1ecf1;
-        border-radius: 4px;
-        font-size: 13px;
-        color: #0c5460;
-    }
-    .existing-data {
-        margin-top: 10px;
-        padding: 10px;
-        background: #fff3cd;
-        border-radius: 4px;
-        font-size: 13px;
-        color: #856404;
     }
 </style>
 
-<!-- 회계연도 선택 -->
-<div class="year-selector">
-    <label for="fiscal_year">회계연도:</label>
-    <select id="fiscal_year" name="fiscal_year" onchange="updateYear(this.value)">
-        {% for year in years %}
-        <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}년</option>
-        {% endfor %}
-    </select>
+<div class="account-main-container">
+    <h1>계정과목등록(예산입력)</h1>
 
-    {% if existing_data %}
-    <div class="existing-data">
-        <strong>{{ selected_year }}년 등록 현황:</strong>
-        계정과목 {{ account_count }}건, 예산 {{ budget_count }}건
-        <form method="post" action="{% url 'admin:account_main' %}" style="display: inline; margin-left: 20px;">
+    <!-- 회계연도 선택 -->
+    <div class="year-box">
+        <label>회계연도:</label>
+        <select id="fiscal_year" onchange="updateYear(this.value)">
+            {% for year in years %}
+            <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}년</option>
+            {% endfor %}
+        </select>
+        {% if existing_data %}
+        <span class="year-status">
+            <strong>{{ selected_year }}년:</strong> 계정과목 {{ account_count }}건, 예산 {{ budget_count }}건
+            <form method="post" action="{% url 'admin:account_main' %}" style="display: inline;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_year_data">
+                <input type="hidden" name="fiscal_year" value="{{ selected_year }}">
+                {% if request.GET.confirm_needed %}
+                <input type="hidden" name="confirm_delete_all" value="yes">
+                <button type="submit" class="delete-btn" onclick="return confirm('{{ selected_year }}년 거래내역, 예산, 계정과목을 모두 삭제합니다. 정말 삭제하시겠습니까?');">
+                    전체 삭제
+                </button>
+                {% else %}
+                <button type="submit" class="delete-btn" onclick="return confirm('{{ selected_year }}년 데이터를 삭제하시겠습니까?');">
+                    삭제
+                </button>
+                {% endif %}
+            </form>
+        </span>
+        {% endif %}
+    </div>
+
+    <!-- 1. 예산 입력 -->
+    <div class="section-box">
+        <h3>1. 예산 입력</h3>
+        <p>확정된 예산을 업로드하면 지출 계정과목과 예산금액이 함께 등록됩니다.</p>
+        <form method="post" enctype="multipart/form-data" action="{% url 'admin:account_main' %}">
             {% csrf_token %}
-            <input type="hidden" name="action" value="delete_year_data">
+            <input type="hidden" name="action" value="budget_upload">
             <input type="hidden" name="fiscal_year" value="{{ selected_year }}">
-            {% if request.GET.confirm_needed %}
-            <input type="hidden" name="confirm_delete_all" value="yes">
-            <button type="submit" onclick="return confirm('{{ selected_year }}년 거래내역, 예산, 계정과목을 모두 삭제합니다. 정말 삭제하시겠습니까?');"
-                    style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
-                거래내역 포함 전체 삭제
-            </button>
-            {% else %}
-            <button type="submit" onclick="return confirm('{{ selected_year }}년 계정과목 및 예산 데이터를 삭제하시겠습니까?');"
-                    style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
-                {{ selected_year }}년 데이터 삭제
-            </button>
-            {% endif %}
+            <div class="file-row">
+                <label>엑셀 파일:</label>
+                <input type="file" name="excel_file" accept=".xlsx,.xls" required>
+                <a href="{% static 'budget_account_template.xlsx' %}" class="template-link" download>템플릿</a>
+            </div>
+            <div class="info-text">컬럼: 구분(대분류), 구분(중분류), 구분(소분류), 계정명, 계정명2, 연간예산액</div>
+            <button type="submit" class="btn btn-primary">예산 업로드</button>
         </form>
     </div>
-    {% endif %}
-</div>
 
-<!-- 1. 예산 입력 -->
-<div class="account-section">
-    <h2>1. 예산 입력</h2>
-    <p>확정된 예산을 엑셀로 업로드하면 지출 계정과목과 예산금액이 함께 등록됩니다.</p>
-    <form method="post" enctype="multipart/form-data" action="{% url 'admin:account_main' %}">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="budget_upload">
-        <input type="hidden" name="fiscal_year" value="{{ selected_year }}">
-        <div class="form-row">
-            <label>엑셀 파일:</label>
-            <input type="file" name="excel_file" accept=".xlsx,.xls" required>
-            <a href="{% static 'budget_account_template.xlsx' %}" class="template-link" download>템플릿 다운로드</a>
-        </div>
-        <div class="info-box">
-            컬럼: 구분(대분류), 구분(중분류), 구분(소분류), 계정명, 계정명2, 연간예산액
-        </div>
-        <div class="action-buttons">
-            <button type="submit" class="button">예산 업로드</button>
-        </div>
-    </form>
-</div>
-
-<!-- 2. 계정과목 등록 -->
-<div class="account-section">
-    <h2>2. 계정과목 등록 (자산/부채/자본/수입)</h2>
-    <p>대차대조표, 수입 관련 계정과목을 엑셀로 업로드합니다.</p>
-    <form method="post" enctype="multipart/form-data" action="{% url 'admin:account_main' %}">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="account_upload">
-        <input type="hidden" name="fiscal_year" value="{{ selected_year }}">
-        <div class="form-row">
-            <label>엑셀 파일:</label>
-            <input type="file" name="excel_file" accept=".xlsx,.xls" required>
-            <a href="{% static 'account_template.xlsx' %}" class="template-link" download>템플릿 다운로드</a>
-        </div>
-        <div class="info-box">
-            컬럼: 계정유형(ASSET/LIABILITY/EQUITY/INCOME), 대분류, 중분류, 소분류, 계정명, 계정명2
-        </div>
-        <div class="action-buttons">
-            <button type="submit" class="button">계정과목 업로드</button>
-        </div>
-    </form>
-</div>
-
-<!-- 3. 계정과목 개별 추가 -->
-<div class="account-section">
-    <h2>3. 계정과목 개별 추가</h2>
-    <p>계정과목을 개별적으로 추가합니다.</p>
-    <div class="action-buttons">
-        <a href="{% url 'admin:finance_account_add' %}?fiscal_year={{ selected_year }}" class="button">계정과목 추가</a>
+    <!-- 2. 계정과목 등록 -->
+    <div class="section-box">
+        <h3>2. 계정과목 등록 (자산/부채/자본/수입)</h3>
+        <p>대차대조표, 수입 관련 계정과목을 엑셀로 업로드합니다.</p>
+        <form method="post" enctype="multipart/form-data" action="{% url 'admin:account_main' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="account_upload">
+            <input type="hidden" name="fiscal_year" value="{{ selected_year }}">
+            <div class="file-row">
+                <label>엑셀 파일:</label>
+                <input type="file" name="excel_file" accept=".xlsx,.xls" required>
+                <a href="{% static 'account_template.xlsx' %}" class="template-link" download>템플릿</a>
+            </div>
+            <div class="info-text">컬럼: 계정유형(ASSET/LIABILITY/EQUITY/INCOME), 대분류, 중분류, 소분류, 계정명, 계정명2</div>
+            <button type="submit" class="btn btn-primary">계정과목 업로드</button>
+        </form>
     </div>
-</div>
 
-<!-- 4. 계정과목 목록 조회 -->
-<div class="account-section">
-    <h2>4. 계정과목 목록 조회</h2>
-    <p>등록된 계정과목을 조회하고 수정/삭제합니다.</p>
-    <div class="action-buttons">
-        <a href="{% url 'admin:finance_account_changelist' %}?fiscal_year={{ selected_year }}" class="button">목록 조회</a>
+    <!-- 3. 계정과목 개별 추가 -->
+    <div class="section-box">
+        <h3>3. 계정과목 개별 추가</h3>
+        <p>계정과목을 개별적으로 추가합니다.</p>
+        <a href="{% url 'admin:finance_account_add' %}?fiscal_year={{ selected_year }}" class="btn btn-primary">계정과목 추가</a>
+    </div>
+
+    <!-- 4. 계정과목 목록 조회 -->
+    <div class="section-box">
+        <h3>4. 계정과목 목록 조회</h3>
+        <p>등록된 계정과목을 조회하고 수정/삭제합니다.</p>
+        <a href="{% url 'admin:finance_account_changelist' %}?fiscal_year={{ selected_year }}" class="btn btn-primary">목록 조회</a>
         {% if budget_count > 0 %}
-        <a href="{% url 'admin:budget_view' fiscal_year=selected_year %}" class="button secondary">예산 조회</a>
+        <a href="{% url 'admin:budget_view' fiscal_year=selected_year %}" class="btn btn-secondary">예산 조회</a>
         {% endif %}
     </div>
 </div>
