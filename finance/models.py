@@ -157,3 +157,92 @@ class Settlement(models.Model):
 
     def __str__(self):
         return f"{self.fiscal_year}년 결산"
+
+
+class CashBookCategory(models.Model):
+    """출납장 과목 (예금출납장/현금출납장 수입 항목)"""
+    BOOK_TYPES = [
+        ('BANK', '예금출납장'),
+        ('CASH', '현금출납장'),
+    ]
+
+    book_type = models.CharField('출납장유형', max_length=10, choices=BOOK_TYPES)
+    name = models.CharField('과목명', max_length=50)
+    order = models.IntegerField('순서', default=0)
+    is_active = models.BooleanField('사용여부', default=True)
+
+    class Meta:
+        verbose_name = '출납장과목'
+        verbose_name_plural = '출납장과목'
+        ordering = ['book_type', 'order']
+        unique_together = ['book_type', 'name']
+
+    def __str__(self):
+        return f"[{self.get_book_type_display()}] {self.name}"
+
+
+class BankAccount(models.Model):
+    """예금계좌 (예금출납장 비고용)"""
+    bank_name = models.CharField('은행명', max_length=50)
+    account_number = models.CharField('계좌번호', max_length=50)
+    account_holder = models.CharField('예금주', max_length=50, blank=True)
+    is_active = models.BooleanField('사용여부', default=True)
+    order = models.IntegerField('순서', default=0)
+
+    class Meta:
+        verbose_name = '예금계좌'
+        verbose_name_plural = '예금계좌'
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.bank_name} {self.account_number}"
+
+
+class CashBook(models.Model):
+    """출납장 (예금출납장/현금출납장)"""
+    BOOK_TYPES = [
+        ('BANK', '예금출납장'),
+        ('CASH', '현금출납장'),
+    ]
+
+    ENTRY_TYPES = [
+        ('INCOME', '수입'),
+        ('EXPENSE', '지출'),
+    ]
+
+    book_type = models.CharField('출납장유형', max_length=10, choices=BOOK_TYPES)
+    year = models.IntegerField('년도')
+    month = models.IntegerField('월')
+    entry_type = models.CharField('구분', max_length=10, choices=ENTRY_TYPES)
+    date = models.DateField('일자')
+    category = models.ForeignKey(
+        CashBookCategory, on_delete=models.PROTECT, verbose_name='과목',
+        null=True, blank=True
+    )
+    account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, verbose_name='계정과목',
+        null=True, blank=True
+    )
+    description = models.CharField('내용', max_length=200, blank=True)
+    amount = models.DecimalField('금액', max_digits=15, decimal_places=0, default=0)
+    bank_account = models.ForeignKey(
+        BankAccount, on_delete=models.SET_NULL, verbose_name='계좌',
+        null=True, blank=True
+    )
+    note = models.CharField('비고', max_length=200, blank=True)
+    order = models.IntegerField('순서', default=0)
+    linked_transaction = models.ForeignKey(
+        'Transaction', on_delete=models.SET_NULL, verbose_name='연결된 거래',
+        null=True, blank=True, related_name='cashbook_entries'
+    )
+    created_at = models.DateTimeField('생성일시', auto_now_add=True)
+    updated_at = models.DateTimeField('수정일시', auto_now=True)
+
+    class Meta:
+        verbose_name = '출납장'
+        verbose_name_plural = '출납장'
+        ordering = ['book_type', 'year', 'month', 'entry_type', 'order']
+
+    def __str__(self):
+        category_name = self.category.name if self.category else self.description
+        return f"{self.year}.{self.month} [{self.get_book_type_display()}] {category_name}"

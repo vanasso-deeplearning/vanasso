@@ -1,0 +1,140 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item active">월간보고서</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .report-container {
+        max-width: 700px;
+    }
+    .report-container h1 {
+        font-size: 20px;
+        margin-bottom: 20px;
+        color: #333;
+    }
+    .year-month-box {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 25px;
+        padding: 12px 15px;
+        background: #f0f0f0;
+        border-radius: 4px;
+    }
+    .year-month-box label {
+        font-weight: bold;
+        font-size: 14px;
+    }
+    .year-month-box select {
+        padding: 6px 12px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .report-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .report-item {
+        display: block;
+        margin-bottom: 12px;
+        padding: 15px 20px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-left: 4px solid #417690;
+        border-radius: 4px;
+        text-decoration: none;
+        color: #333;
+        transition: background 0.2s;
+    }
+    .report-item:hover {
+        background: #f5f9fc;
+        text-decoration: none;
+    }
+    .report-item .number {
+        display: inline-block;
+        width: 24px;
+        height: 24px;
+        line-height: 24px;
+        text-align: center;
+        background: #417690;
+        color: white;
+        border-radius: 50%;
+        font-size: 12px;
+        margin-right: 12px;
+    }
+    .report-item .title {
+        font-size: 15px;
+        font-weight: bold;
+        color: #417690;
+    }
+    .report-item .desc {
+        margin-top: 5px;
+        margin-left: 36px;
+        font-size: 12px;
+        color: #888;
+    }
+</style>
+
+<div class="report-container">
+    <h1>월간보고서</h1>
+
+    <div class="year-month-box">
+        <label>기준연월:</label>
+        <select id="select_year">
+            {% for year in years %}
+            <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}년</option>
+            {% endfor %}
+        </select>
+        <select id="select_month">
+            {% for m in months %}
+            <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}월</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <ul class="report-list">
+        <li>
+            <a href="{% url 'admin:cashbook_view' book_type='BANK' year=selected_year month=selected_month %}" class="report-item">
+                <span class="number">1</span>
+                <span class="title">예금출납장</span>
+                <div class="desc">예금 계좌의 월별 수입/지출 내역을 기록합니다.</div>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:cashbook_view' book_type='CASH' year=selected_year month=selected_month %}" class="report-item">
+                <span class="number">2</span>
+                <span class="title">현금출납장</span>
+                <div class="desc">현금의 월별 수입/지출 내역을 기록합니다.</div>
+            </a>
+        </li>
+        <li>
+            <a href="#" class="report-item" style="opacity: 0.5; pointer-events: none;">
+                <span class="number">3</span>
+                <span class="title">월간 예산집행 내역</span>
+                <div class="desc">예산 대비 집행 현황을 조회합니다. (준비중)</div>
+            </a>
+        </li>
+    </ul>
+</div>
+
+<script>
+document.getElementById('select_year').addEventListener('change', updateUrl);
+document.getElementById('select_month').addEventListener('change', updateUrl);
+
+function updateUrl() {
+    var year = document.getElementById('select_year').value;
+    var month = document.getElementById('select_month').value;
+    window.location.href = '{% url "admin:monthly_report" %}?year=' + year + '&month=' + month;
+}
+</script>
+{% endblock %}

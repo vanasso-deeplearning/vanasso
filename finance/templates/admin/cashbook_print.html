@@ -1,0 +1,200 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ book_type_display }} ({{ year }}. {{ month }}월)</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 15mm;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+            font-size: 11pt;
+            line-height: 1.4;
+        }
+        .container {
+            width: 100%;
+            max-width: 210mm;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            font-size: 20pt;
+            text-decoration: underline;
+            margin-bottom: 5px;
+        }
+        .header .period {
+            font-size: 12pt;
+        }
+        .section-title {
+            font-size: 11pt;
+            font-weight: bold;
+            margin: 20px 0 8px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        .section-title .unit {
+            font-weight: normal;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10pt;
+        }
+        th, td {
+            border: 1px solid #000;
+            padding: 5px 8px;
+            text-align: center;
+        }
+        th {
+            background: #f0f0f0;
+        }
+        .col-day { width: 60px; }
+        .col-desc { text-align: left; }
+        .col-amount { width: 100px; text-align: right; }
+        .col-note { width: 130px; text-align: left; }
+        .subtotal-row {
+            background: #f5f5f5;
+            font-weight: bold;
+        }
+        .no-print {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .no-print button {
+            padding: 10px 30px;
+            font-size: 14px;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+        @media print {
+            .no-print {
+                display: none;
+            }
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>{{ book_type_display }}</h1>
+        <div class="period">({{ year }}. {{ month }}월)</div>
+    </div>
+
+    <!-- 수입내역 -->
+    <div class="section-title">
+        <span>1. 수입내역</span>
+        <span class="unit">(단위 : 원)</span>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th class="col-day">일 자</th>
+                <th class="col-desc">내 용</th>
+                <th class="col-amount">금 액</th>
+                <th class="col-note">비 고</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in income_entries %}
+            <tr>
+                <td class="col-day">{{ entry.date.month }}/{{ entry.date.day|stringformat:"02d" }}</td>
+                <td class="col-desc">{% if entry.category %}{{ entry.category.name }}{% else %}{{ entry.description }}{% endif %}</td>
+                <td class="col-amount">{% if entry.amount %}{{ entry.amount|floatformat:0|intcomma }}{% endif %}</td>
+                <td class="col-note">{% if book_type == 'BANK' and entry.bank_account %}{{ entry.bank_account.account_number }}{% else %}{{ entry.note }}{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: #888;">내역 없음</td>
+            </tr>
+            {% endfor %}
+            <!-- 빈 행 추가 (최소 10행) -->
+            {% for i in "1234567890"|make_list %}
+                {% if forloop.counter > income_entries|length and forloop.counter <= 15 %}
+                <tr>
+                    <td class="col-day">&nbsp;</td>
+                    <td class="col-desc">&nbsp;</td>
+                    <td class="col-amount">&nbsp;</td>
+                    <td class="col-note">&nbsp;</td>
+                </tr>
+                {% endif %}
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="subtotal-row">
+                <td colspan="2">소 계</td>
+                <td class="col-amount">{{ income_total|floatformat:0|intcomma }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <!-- 지출내역 -->
+    <div class="section-title">
+        <span>2. 지출내역</span>
+        <span class="unit">(단위 : 원)</span>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th class="col-day">일 자</th>
+                <th class="col-desc">내 용</th>
+                <th class="col-amount">금 액</th>
+                <th class="col-note">비 고</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in expense_entries %}
+            <tr>
+                <td class="col-day">{{ entry.date.month }}/{{ entry.date.day|stringformat:"02d" }}</td>
+                <td class="col-desc">{{ entry.description }}</td>
+                <td class="col-amount">{% if entry.amount %}{{ entry.amount|floatformat:0|intcomma }}{% endif %}</td>
+                <td class="col-note">{% if book_type == 'BANK' and entry.bank_account %}{{ entry.bank_account.account_number }}{% else %}{{ entry.note }}{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: #888;">내역 없음</td>
+            </tr>
+            {% endfor %}
+            <!-- 빈 행 추가 -->
+            {% for i in "1234567890"|make_list %}
+                {% if forloop.counter > expense_entries|length and forloop.counter <= 15 %}
+                <tr>
+                    <td class="col-day">&nbsp;</td>
+                    <td class="col-desc">&nbsp;</td>
+                    <td class="col-amount">&nbsp;</td>
+                    <td class="col-note">&nbsp;</td>
+                </tr>
+                {% endif %}
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="subtotal-row">
+                <td colspan="2">소 계</td>
+                <td class="col-amount">{{ expense_total|floatformat:0|intcomma }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="no-print">
+        <button onclick="window.print()">인쇄</button>
+        <button onclick="window.close()">닫기</button>
+    </div>
+</div>
+</body>
+</html>

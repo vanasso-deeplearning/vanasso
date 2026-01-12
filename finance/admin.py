@@ -9,7 +9,7 @@ from decimal import Decimal
 import pandas as pd
 import json
 
-from .models import Account, Member, Budget, FixedAsset, Transaction, Settlement
+from .models import Account, Member, Budget, FixedAsset, Transaction, Settlement, CashBook, CashBookCategory, BankAccount
 
 
 # 4대보험 구성 항목 (합산 대상)
@@ -822,3 +822,303 @@ class SettlementAdmin(admin.ModelAdmin):
     list_display = ['fiscal_year', 'closing_date', 'status', 'created_at']
     list_filter = ['status', 'fiscal_year']
     ordering = ['-fiscal_year']
+
+
+@admin.register(CashBook)
+class CashBookAdmin(admin.ModelAdmin):
+    """월간보고서 관리 (예금출납장, 현금출납장)"""
+    list_display = ['year', 'month', 'book_type', 'entry_type', 'date', 'description', 'amount']
+    list_filter = ['book_type', 'year', 'month']
+    ordering = ['-year', '-month', 'book_type', 'entry_type', 'order']
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('monthly-report/', self.admin_site.admin_view(self.monthly_report_main), name='monthly_report'),
+            path('cashbook/<str:book_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.cashbook_view), name='cashbook_view'),
+            path('cashbook/save/', self.admin_site.admin_view(self.cashbook_save), name='cashbook_save'),
+            path('cashbook/pdf/<str:book_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.cashbook_pdf), name='cashbook_pdf'),
+        ]
+        return custom_urls + urls
+
+    def changelist_view(self, request, extra_context=None):
+        """기본 목록 대신 월간보고서 메인으로 리다이렉트"""
+        return redirect('admin:monthly_report')
+
+    def monthly_report_main(self, request):
+        """월간보고서 메인 화면"""
+        from datetime import datetime
+        current_year = datetime.now().year
+        current_month = datetime.now().month
+
+        # 연도/월 선택
+        selected_year = int(request.GET.get('year', current_year))
+        selected_month = int(request.GET.get('month', current_month))
+
+        # 연도 목록
+        years = list(range(current_year + 1, current_year - 3, -1))
+        months = list(range(1, 13))
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': '월간보고서',
+            'opts': self.model._meta,
+            'years': years,
+            'months': months,
+            'selected_year': selected_year,
+            'selected_month': selected_month,
+        }
+
+        return TemplateResponse(request, 'admin/monthly_report_main.html', context)
+
+    def cashbook_view(self, request, book_type, year, month):
+        """출납장 조회/편집 화면"""
+        from datetime import date
+        from calendar import monthrange
+
+        # 해당 월의 첫날, 마지막날
+        _, last_day = monthrange(year, month)
+
+        # 과목 목록 (해당 출납장 유형)
+        categories = CashBookCategory.objects.filter(
+            book_type=book_type, is_active=True
+        ).order_by('order')
+
+        # 계좌 목록 (예금출납장만)
+        bank_accounts = BankAccount.objects.filter(is_active=True).order_by('order') if book_type == 'BANK' else []
+
+        # 지출 계정과목 목록 (예금출납장/현금출납장: Account 테이블에서 가져옴)
+        # account_name2가 있으면 account_name2를, 없으면 account_name을 표시
+        # EXPENSE와 LIABILITY 타입 모두 포함 (예수금 등)
+        from datetime import datetime
+        current_year = datetime.now().year
+        expense_accounts = []
+
+        expense_accounts = list(Account.objects.filter(
+            fiscal_year=current_year,
+            account_type__in=['EXPENSE', 'LIABILITY'],
+            is_active=True
+        ).order_by('code'))
+
+        # 현재 연도에 계정이 없으면 최근 연도 사용
+        if not expense_accounts:
+            latest_year = Account.objects.filter(account_type__in=['EXPENSE', 'LIABILITY']).order_by('-fiscal_year').values_list('fiscal_year', flat=True).first()
+            if latest_year:
+                expense_accounts = list(Account.objects.filter(
+                    fiscal_year=latest_year,
+                    account_type__in=['EXPENSE', 'LIABILITY'],
+                    is_active=True
+                ).order_by('code'))
+
+        # 각 계정에 display_name 속성 추가 (account_name2가 있으면 그것을, 없으면 account_name)
+        for acc in expense_accounts:
+            acc.display_name = acc.account_name2 if acc.account_name2 else acc.account_name
+
+        # 기존 데이터 조회
+        income_entries = list(CashBook.objects.filter(
+            book_type=book_type, year=year, month=month, entry_type='INCOME'
+        ).order_by('order').values(
+            'id', 'date', 'category_id', 'description', 'amount', 'bank_account_id', 'note', 'order'
+        ))
+
+        expense_entries = list(CashBook.objects.filter(
+            book_type=book_type, year=year, month=month, entry_type='EXPENSE'
+        ).order_by('order').values(
+            'id', 'date', 'category_id', 'description', 'amount', 'bank_account_id', 'note', 'order', 'account_id'
+        ))
+
+        # 빈 행 추가 (예금출납장: 수입 20줄/지출 20줄, 현금출납장: 수입 5줄/지출 20줄)
+        income_row_count = 20 if book_type == 'BANK' else 5
+        while len(income_entries) < income_row_count:
+            income_entries.append({
+                'id': None, 'date': None, 'category_id': None, 'description': '',
+                'amount': 0, 'bank_account_id': None, 'note': '', 'order': len(income_entries)
+            })
+        while len(expense_entries) < 20:
+            expense_entries.append({
+                'id': None, 'date': None, 'category_id': None, 'description': '',
+                'amount': 0, 'bank_account_id': None, 'note': '', 'order': len(expense_entries),
+                'account_id': None
+            })
+
+        # 수입/지출 합계
+        income_total = sum(e['amount'] for e in income_entries if e['amount'])
+        expense_total = sum(e['amount'] for e in expense_entries if e['amount'])
+
+        book_type_display = '예금출납장' if book_type == 'BANK' else '현금출납장'
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'{book_type_display} ({year}. {month}월)',
+            'opts': self.model._meta,
+            'book_type': book_type,
+            'book_type_display': book_type_display,
+            'year': year,
+            'month': month,
+            'categories': categories,
+            'bank_accounts': bank_accounts,
+            'expense_accounts': expense_accounts,
+            'income_entries': income_entries,
+            'expense_entries': expense_entries,
+            'income_total': income_total,
+            'expense_total': expense_total,
+            'last_day': last_day,
+        }
+
+        return TemplateResponse(request, 'admin/cashbook_form.html', context)
+
+    def cashbook_save(self, request):
+        """출납장 저장"""
+        if request.method != 'POST':
+            return redirect('admin:monthly_report')
+
+        book_type = request.POST.get('book_type')
+        year = int(request.POST.get('year'))
+        month = int(request.POST.get('month'))
+
+        # 기존 데이터 삭제 (연결된 Transaction도 함께 삭제)
+        old_cashbooks = CashBook.objects.filter(book_type=book_type, year=year, month=month)
+        linked_transaction_ids = list(old_cashbooks.exclude(
+            linked_transaction__isnull=True
+        ).values_list('linked_transaction_id', flat=True))
+        old_cashbooks.delete()
+        if linked_transaction_ids:
+            Transaction.objects.filter(id__in=linked_transaction_ids).delete()
+
+        saved_count = 0
+
+        # 수입 내역 저장 (과목 선택)
+        idx = 0
+        while True:
+            day = request.POST.get(f'income_day_{idx}')
+            if day is None:
+                break
+
+            category_id = request.POST.get(f'income_category_{idx}', '').strip()
+            amount_str = request.POST.get(f'income_amount_{idx}', '0').replace(',', '')
+            bank_account_id = request.POST.get(f'income_bank_{idx}', '').strip()
+            note = request.POST.get(f'income_note_{idx}', '').strip()
+
+            if day and category_id:
+                try:
+                    from datetime import date
+                    entry_date = date(year, month, int(day))
+                    amount = Decimal(amount_str) if amount_str else Decimal('0')
+
+                    category = CashBookCategory.objects.get(pk=category_id)
+                    bank_account = BankAccount.objects.get(pk=bank_account_id) if bank_account_id else None
+
+                    CashBook.objects.create(
+                        book_type=book_type,
+                        year=year,
+                        month=month,
+                        entry_type='INCOME',
+                        date=entry_date,
+                        category=category,
+                        amount=amount,
+                        bank_account=bank_account,
+                        note=note,
+                        order=saved_count,
+                    )
+                    saved_count += 1
+                except Exception as e:
+                    pass
+
+            idx += 1
+
+        # 지출 내역 저장 (예금출납장은 Transaction에도 동시 저장)
+        idx = 0
+        transaction_saved = 0
+        while True:
+            day = request.POST.get(f'expense_day_{idx}')
+            if day is None:
+                break
+
+            account_id = request.POST.get(f'expense_account_{idx}', '').strip()
+            amount_str = request.POST.get(f'expense_amount_{idx}', '0').replace(',', '')
+            note = request.POST.get(f'expense_note_{idx}', '').strip()
+
+            if day and account_id:
+                try:
+                    from datetime import date
+                    entry_date = date(year, month, int(day))
+                    amount = Decimal(amount_str) if amount_str else Decimal('0')
+
+                    account = Account.objects.get(pk=account_id)
+                    # display_name: account_name2가 있으면 그것을, 없으면 account_name
+                    display_name = account.account_name2 if account.account_name2 else account.account_name
+
+                    # 예금출납장 지출은 Transaction 테이블에도 저장
+                    linked_trans = None
+                    if book_type == 'BANK' and amount > 0:
+                        linked_trans = Transaction.objects.create(
+                            date=entry_date,
+                            transaction_type='EXPENSE',
+                            account=account,
+                            description=display_name + (f' ({note})' if note else ''),
+                            amount=amount,
+                            payment_method='BANK',
+                            status='APPROVED',
+                        )
+                        transaction_saved += 1
+
+                    CashBook.objects.create(
+                        book_type=book_type,
+                        year=year,
+                        month=month,
+                        entry_type='EXPENSE',
+                        date=entry_date,
+                        account=account,
+                        description=display_name,
+                        amount=amount,
+                        note=note,
+                        order=saved_count,
+                        linked_transaction=linked_trans,
+                    )
+                    saved_count += 1
+                except Exception as e:
+                    pass
+
+            idx += 1
+
+        book_type_display = '예금출납장' if book_type == 'BANK' else '현금출납장'
+        msg = f'{year}년 {month}월 {book_type_display} 저장 완료 ({saved_count}건)'
+        if transaction_saved > 0:
+            msg += f' - 거래내역 {transaction_saved}건 동시 저장'
+        messages.success(request, msg)
+
+        return redirect('admin:cashbook_view', book_type=book_type, year=year, month=month)
+
+    def cashbook_pdf(self, request, book_type, year, month):
+        """출납장 PDF 출력"""
+        from django.http import HttpResponse
+
+        # 데이터 조회
+        income_entries = CashBook.objects.filter(
+            book_type=book_type, year=year, month=month, entry_type='INCOME'
+        ).select_related('category', 'bank_account', 'account').order_by('order')
+
+        expense_entries = CashBook.objects.filter(
+            book_type=book_type, year=year, month=month, entry_type='EXPENSE'
+        ).select_related('category', 'bank_account', 'account').order_by('order')
+
+        income_total = sum(e.amount for e in income_entries)
+        expense_total = sum(e.amount for e in expense_entries)
+
+        book_type_display = '예금출납장' if book_type == 'BANK' else '현금출납장'
+
+        # HTML로 출력 (브라우저에서 인쇄)
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'{book_type_display} ({year}. {month}월)',
+            'book_type': book_type,
+            'book_type_display': book_type_display,
+            'year': year,
+            'month': month,
+            'income_entries': income_entries,
+            'expense_entries': expense_entries,
+            'income_total': income_total,
+            'expense_total': expense_total,
+        }
+
+        return TemplateResponse(request, 'admin/cashbook_print.html', context)

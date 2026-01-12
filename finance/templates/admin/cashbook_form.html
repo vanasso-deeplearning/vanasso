@@ -1,0 +1,296 @@
+{% extends "admin/base_site.html" %}
+{% load i18n humanize static %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:monthly_report' %}?year={{ year }}&month={{ month }}">월간보고서</a></li>
+        <li class="breadcrumb-item active">{{ book_type_display }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .cashbook-container {
+        max-width: 950px;
+    }
+    .cashbook-header {
+        text-align: center;
+        margin-bottom: 15px;
+    }
+    .cashbook-header h1 {
+        font-size: 22px;
+        text-decoration: underline;
+        margin-bottom: 5px;
+    }
+    .cashbook-header .period {
+        font-size: 14px;
+        color: #666;
+    }
+    .section-title {
+        font-size: 14px;
+        font-weight: bold;
+        margin: 15px 0 8px 0;
+        display: flex;
+        justify-content: space-between;
+    }
+    .section-title .unit {
+        font-weight: normal;
+        color: #888;
+    }
+    .cashbook-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        table-layout: fixed;
+    }
+    .cashbook-table th, .cashbook-table td {
+        border: 1px solid #999;
+        padding: 3px 5px;
+        text-align: center;
+    }
+    .cashbook-table th {
+        background: #e8e8e8;
+        font-weight: normal;
+    }
+    .cashbook-table .col-day { width: 50px; }
+    .cashbook-table .col-category { width: 120px; }
+    .cashbook-table .col-amount { width: 110px; text-align: right; }
+    .cashbook-table .col-bank { width: 180px; }
+    .cashbook-table input[type="text"],
+    .cashbook-table input[type="number"] {
+        width: 100%;
+        border: none;
+        background: transparent;
+        padding: 2px;
+        font-size: 12px;
+        box-sizing: border-box;
+    }
+    .cashbook-table select {
+        width: 100%;
+        border: none;
+        background: transparent;
+        padding: 2px;
+        font-size: 11px;
+        box-sizing: border-box;
+    }
+    .cashbook-table input.amount-input {
+        text-align: right;
+    }
+    .cashbook-table .subtotal-row {
+        background: #f5f5f5;
+        font-weight: bold;
+    }
+    .cashbook-table .subtotal-row td {
+        text-align: center;
+    }
+    .btn-row {
+        margin-top: 15px;
+        display: flex;
+        gap: 10px;
+    }
+    .btn-row .btn {
+        padding: 8px 20px;
+        font-size: 13px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .btn-row .btn-primary {
+        background: #417690;
+        color: white;
+    }
+    .btn-row .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+    .btn-row .btn-print {
+        background: #28a745;
+        color: white;
+    }
+</style>
+
+<div class="cashbook-container">
+    <div class="cashbook-header">
+        <h1>{{ book_type_display }}</h1>
+        <div class="period">({{ year }}. {{ month }}월)</div>
+    </div>
+
+    <form method="post" action="{% url 'admin:cashbook_save' %}">
+        {% csrf_token %}
+        <input type="hidden" name="book_type" value="{{ book_type }}">
+        <input type="hidden" name="year" value="{{ year }}">
+        <input type="hidden" name="month" value="{{ month }}">
+
+        <!-- 수입내역 -->
+        <div class="section-title">
+            <span>1. 수입내역</span>
+            <span class="unit">(단위 : 원)</span>
+        </div>
+        <table class="cashbook-table">
+            <thead>
+                <tr>
+                    <th class="col-day">일 자</th>
+                    <th class="col-category">내 용</th>
+                    <th class="col-amount">금 액</th>
+                    {% if book_type == 'BANK' %}
+                    <th class="col-bank">비 고</th>
+                    {% else %}
+                    <th style="width: 150px;">비 고</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody id="income_tbody">
+                {% for entry in income_entries %}
+                <tr>
+                    <td class="col-day">
+                        <input type="text" name="income_day_{{ forloop.counter0 }}"
+                               value="{% if entry.date %}{{ entry.date.day }}{% endif %}"
+                               placeholder="일" maxlength="2" style="text-align: center;">
+                    </td>
+                    <td class="col-category">
+                        <select name="income_category_{{ forloop.counter0 }}">
+                            <option value="">선택</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}" {% if entry.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td class="col-amount">
+                        <input type="text" name="income_amount_{{ forloop.counter0 }}"
+                               class="amount-input"
+                               value="{% if entry.amount %}{{ entry.amount|floatformat:0 }}{% endif %}"
+                               placeholder="금액">
+                    </td>
+                    {% if book_type == 'BANK' %}
+                    <td class="col-bank">
+                        <select name="income_bank_{{ forloop.counter0 }}">
+                            <option value="">선택</option>
+                            {% for acc in bank_accounts %}
+                            <option value="{{ acc.id }}" {% if entry.bank_account_id == acc.id %}selected{% endif %}>{{ acc.account_number }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    {% else %}
+                    <td>
+                        <input type="text" name="income_note_{{ forloop.counter0 }}"
+                               value="{{ entry.note }}" placeholder="비고">
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="subtotal-row">
+                    <td colspan="2">소 계</td>
+                    <td class="col-amount" id="income_total">{{ income_total|floatformat:0|intcomma }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <!-- 지출내역 -->
+        <div class="section-title">
+            <span>2. 지출내역</span>
+            <span class="unit">(단위 : 원)</span>
+        </div>
+        <table class="cashbook-table">
+            <thead>
+                <tr>
+                    <th class="col-day">일 자</th>
+                    <th class="col-category">내 용</th>
+                    <th class="col-amount">금 액</th>
+                    {% if book_type == 'BANK' %}
+                    <th class="col-bank">비 고</th>
+                    {% else %}
+                    <th style="width: 150px;">비 고</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody id="expense_tbody">
+                {% for entry in expense_entries %}
+                <tr>
+                    <td class="col-day">
+                        <input type="text" name="expense_day_{{ forloop.counter0 }}"
+                               value="{% if entry.date %}{{ entry.date.day }}{% endif %}"
+                               placeholder="일" maxlength="2" style="text-align: center;">
+                    </td>
+                    <td class="col-category">
+                        <select name="expense_account_{{ forloop.counter0 }}">
+                            <option value="">선택</option>
+                            {% for acc in expense_accounts %}
+                            <option value="{{ acc.id }}" {% if entry.account_id == acc.id %}selected{% endif %}>{{ acc.display_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td class="col-amount">
+                        <input type="text" name="expense_amount_{{ forloop.counter0 }}"
+                               class="amount-input"
+                               value="{% if entry.amount %}{{ entry.amount|floatformat:0 }}{% endif %}"
+                               placeholder="금액">
+                    </td>
+                    <td class="col-bank">
+                        <input type="text" name="expense_note_{{ forloop.counter0 }}"
+                               value="{{ entry.note }}" placeholder="비고">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="subtotal-row">
+                    <td colspan="2">소 계</td>
+                    <td class="col-amount" id="expense_total">{{ expense_total|floatformat:0|intcomma }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div class="btn-row">
+            <button type="submit" class="btn btn-primary">저장</button>
+            <a href="{% url 'admin:cashbook_pdf' book_type=book_type year=year month=month %}"
+               class="btn btn-print" target="_blank">출력</a>
+            <a href="{% url 'admin:monthly_report' %}?year={{ year }}&month={{ month }}"
+               class="btn btn-secondary">목록</a>
+        </div>
+    </form>
+</div>
+
+<script>
+// 금액 입력 시 천단위 콤마 자동 추가
+document.querySelectorAll('.amount-input').forEach(function(input) {
+    input.addEventListener('blur', function() {
+        var val = this.value.replace(/,/g, '');
+        if (val && !isNaN(val)) {
+            this.value = parseInt(val).toLocaleString();
+        }
+    });
+    input.addEventListener('focus', function() {
+        this.value = this.value.replace(/,/g, '');
+    });
+});
+
+// 합계 자동 계산
+function updateTotals() {
+    var incomeTotal = 0;
+    document.querySelectorAll('input[name^="income_amount_"]').forEach(function(input) {
+        var val = parseInt(input.value.replace(/,/g, '')) || 0;
+        incomeTotal += val;
+    });
+    document.getElementById('income_total').textContent = incomeTotal.toLocaleString();
+
+    var expenseTotal = 0;
+    document.querySelectorAll('input[name^="expense_amount_"]').forEach(function(input) {
+        var val = parseInt(input.value.replace(/,/g, '')) || 0;
+        expenseTotal += val;
+    });
+    document.getElementById('expense_total').textContent = expenseTotal.toLocaleString();
+}
+
+document.querySelectorAll('.amount-input').forEach(function(input) {
+    input.addEventListener('input', updateTotals);
+});
+</script>
+{% endblock %}
