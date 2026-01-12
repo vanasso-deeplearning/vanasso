@@ -23,10 +23,318 @@ ACCOUNT_CODE_PREFIX = {
 
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
-    list_display = ['fiscal_year', 'code', 'category_large', 'category_medium', 'category_small', 'account_name', 'account_name2', 'is_active']
-    list_filter = ['fiscal_year', 'category_large', 'is_active']
+    list_display = ['fiscal_year', 'code', 'account_type', 'category_large', 'category_medium', 'category_small', 'account_name', 'account_name2', 'is_active']
+    list_filter = ['fiscal_year', 'account_type', 'category_large', 'is_active']
     search_fields = ['code', 'account_name', 'category_small']
     ordering = ['fiscal_year', 'code']
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('main/', self.admin_site.admin_view(self.account_main_view), name='account_main'),
+            path('upload/', self.admin_site.admin_view(self.upload_account), name='account_upload'),
+        ]
+        return custom_urls + urls
+
+    def account_main_view(self, request):
+        """계정과목등록(예산입력) 통합 메뉴"""
+        from datetime import datetime
+        current_year = datetime.now().year
+
+        # 연도 선택
+        selected_year = request.GET.get('year', current_year)
+        try:
+            selected_year = int(selected_year)
+        except:
+            selected_year = current_year
+
+        # 연도 목록 (현재년도 기준 +-2년)
+        years = list(range(current_year + 2, current_year - 3, -1))
+
+        # 기존 데이터 확인
+        account_count = Account.objects.filter(fiscal_year=selected_year).count()
+        budget_count = Budget.objects.filter(fiscal_year=selected_year).count()
+
+        # POST 처리
+        if request.method == 'POST':
+            action = request.POST.get('action')
+            fiscal_year = int(request.POST.get('fiscal_year', selected_year))
+            excel_file = request.FILES.get('excel_file')
+
+            if action == 'budget_upload' and excel_file:
+                return self.handle_budget_upload(request, fiscal_year, excel_file)
+            elif action == 'account_upload' and excel_file:
+                return self.handle_account_upload(request, fiscal_year, excel_file)
+            elif action == 'delete_year_data':
+                return self.handle_delete_year_data(request, fiscal_year)
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': '계정과목등록(예산입력)',
+            'opts': self.model._meta,
+            'years': years,
+            'selected_year': selected_year,
+            'account_count': account_count,
+            'budget_count': budget_count,
+            'existing_data': account_count > 0 or budget_count > 0,
+        }
+
+        return TemplateResponse(request, 'admin/account_main.html', context)
+
+    def handle_budget_upload(self, request, fiscal_year, excel_file):
+        """예산 업로드 처리"""
+        # 기존 예산 데이터 존재 확인
+        existing_budgets = Budget.objects.filter(fiscal_year=fiscal_year).count()
+        if existing_budgets > 0:
+            messages.error(request, f'{fiscal_year}년 예산이 이미 존재합니다. 기존 데이터를 삭제 후 업로드해주세요.')
+            return redirect(f"{request.path}?year={fiscal_year}")
+
+        try:
+            df = pd.read_excel(excel_file)
+        except Exception as e:
+            messages.error(request, f'엑셀 파일 읽기 오류: {e}')
+            return redirect(f"{request.path}?year={fiscal_year}")
+
+        # BudgetAdmin의 parse_budget_template 로직 재사용
+        accounts = []
+        budgets = {}
+        insurance_total = Decimal('0')
+        insurance_account_info = None
+        code_counters = {'인건비': 0, '사업비': 0}
+
+        for _, row in df.iterrows():
+            category_large = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
+            category_medium = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ''
+            category_small = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else ''
+            account_name = str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else ''
+            account_name2 = str(row.iloc[4]).strip() if pd.notna(row.iloc[4]) and str(row.iloc[4]) != 'nan' else ''
+
+            try:
+                amount = Decimal(str(row.iloc[5])) if pd.notna(row.iloc[5]) else Decimal('0')
+            except:
+                amount = Decimal('0')
+
+            if not category_large or category_large == 'nan' or category_large == '구분(대분류)':
+                continue
+
+            if account_name2 and account_name2 in INSURANCE_ITEMS:
+                insurance_total += amount
+                if insurance_account_info is None:
+                    insurance_account_info = {'account_name': account_name}
+                code_counters[category_large] = code_counters.get(category_large, 0) + 1
+                code = f"{ACCOUNT_CODE_PREFIX.get(category_large, '9')}{code_counters[category_large]:03d}"
+                accounts.append({
+                    'fiscal_year': fiscal_year, 'code': code,
+                    'category_large': category_large, 'category_medium': category_medium,
+                    'category_small': category_small, 'account_name': account_name,
+                    'account_name2': account_name2, 'account_type': 'EXPENSE',
+                })
+                continue
+
+            code_counters[category_large] = code_counters.get(category_large, 0) + 1
+            code = f"{ACCOUNT_CODE_PREFIX.get(category_large, '9')}{code_counters[category_large]:03d}"
+            accounts.append({
+                'fiscal_year': fiscal_year, 'code': code,
+                'category_large': category_large, 'category_medium': category_medium,
+                'category_small': category_small, 'account_name': account_name,
+                'account_name2': '', 'account_type': 'EXPENSE',
+            })
+            if account_name not in budgets:
+                budgets[account_name] = amount
+            else:
+                budgets[account_name] += amount
+
+        if insurance_total > 0 and insurance_account_info:
+            budgets[insurance_account_info['account_name']] = insurance_total
+
+        if not accounts:
+            messages.error(request, '계정 데이터를 찾을 수 없습니다.')
+            return redirect(f"{request.path}?year={fiscal_year}")
+
+        with transaction.atomic():
+            account_count = 0
+            budget_count = 0
+            for acc_data in accounts:
+                Account.objects.create(**acc_data)
+                account_count += 1
+
+            for account_name, amount in budgets.items():
+                if amount > 0:
+                    account = Account.objects.filter(
+                        fiscal_year=fiscal_year, account_name=account_name, account_name2=''
+                    ).first() or Account.objects.filter(
+                        fiscal_year=fiscal_year, account_name=account_name
+                    ).first()
+                    if account:
+                        Budget.objects.create(
+                            fiscal_year=fiscal_year, account=account,
+                            annual_amount=amount, supplementary_amount=Decimal('0'),
+                        )
+                        budget_count += 1
+
+        messages.success(request, f'{fiscal_year}년 예산 업로드 완료: 계정과목 {account_count}건, 예산 {budget_count}건')
+        return redirect(f"{request.path}?year={fiscal_year}")
+
+    def handle_account_upload(self, request, fiscal_year, excel_file):
+        """계정과목 업로드 처리"""
+        try:
+            df = pd.read_excel(excel_file)
+        except Exception as e:
+            messages.error(request, f'엑셀 파일 읽기 오류: {e}')
+            return redirect(f"{request.path}?year={fiscal_year}")
+
+        created_count = 0
+        skipped_count = 0
+        code_counter = {}
+
+        with transaction.atomic():
+            for _, row in df.iterrows():
+                account_type = str(row.get('계정유형', '')).strip()
+                category_large = str(row.get('대분류', '')).strip()
+                category_medium = str(row.get('중분류', '')).strip()
+                category_small = str(row.get('소분류', '')).strip()
+                account_name = str(row.get('계정명', '')).strip()
+                account_name2 = str(row.get('계정명2', '')).strip() if pd.notna(row.get('계정명2')) else ''
+
+                if not account_type or account_type == 'nan' or not account_name:
+                    continue
+
+                type_prefix = {'ASSET': 'A', 'LIABILITY': 'L', 'EQUITY': 'E', 'INCOME': 'I', 'EXPENSE': 'X'}
+                prefix = type_prefix.get(account_type, 'Z')
+                code_counter[prefix] = code_counter.get(prefix, 0) + 1
+                code = f"{prefix}{code_counter[prefix]:03d}"
+
+                if Account.objects.filter(fiscal_year=fiscal_year, account_name=account_name, account_type=account_type).exists():
+                    skipped_count += 1
+                    continue
+
+                Account.objects.create(
+                    fiscal_year=fiscal_year, code=code, account_type=account_type,
+                    category_large=category_large, category_medium=category_medium,
+                    category_small=category_small, account_name=account_name, account_name2=account_name2,
+                )
+                created_count += 1
+
+        if created_count > 0:
+            messages.success(request, f'계정과목 {created_count}건 등록 완료' + (f' (중복 {skipped_count}건 제외)' if skipped_count else ''))
+        else:
+            messages.warning(request, '등록된 계정과목이 없습니다.')
+
+        return redirect(f"{request.path}?year={fiscal_year}")
+
+    def handle_delete_year_data(self, request, fiscal_year):
+        """연도별 데이터 삭제 (거래내역 → 예산 → 계정과목 순서로 삭제)"""
+        # 해당 연도 계정과목에 연결된 거래내역 확인
+        year_accounts = Account.objects.filter(fiscal_year=fiscal_year)
+        transaction_count = Transaction.objects.filter(account__in=year_accounts).count()
+
+        if transaction_count > 0:
+            # 거래내역이 있으면 확인 후 함께 삭제
+            confirm = request.POST.get('confirm_delete_all')
+            if confirm != 'yes':
+                messages.warning(
+                    request,
+                    f'{fiscal_year}년 계정과목에 연결된 거래내역 {transaction_count}건이 있습니다. '
+                    f'거래내역도 함께 삭제하려면 다시 삭제 버튼을 클릭하세요.'
+                )
+                # 세션에 확인 플래그 저장
+                request.session['pending_delete_year'] = fiscal_year
+                return redirect(f"{request.path}?year={fiscal_year}&confirm_needed=1")
+
+        with transaction.atomic():
+            # 1. 거래내역 삭제
+            trans_deleted, _ = Transaction.objects.filter(account__in=year_accounts).delete()
+            # 2. 예산 삭제
+            budget_count, _ = Budget.objects.filter(fiscal_year=fiscal_year).delete()
+            # 3. 계정과목 삭제
+            account_count, _ = Account.objects.filter(fiscal_year=fiscal_year).delete()
+
+        # 세션 정리
+        if 'pending_delete_year' in request.session:
+            del request.session['pending_delete_year']
+
+        msg = f'{fiscal_year}년 데이터 삭제 완료: 계정과목 {account_count}건, 예산 {budget_count}건'
+        if trans_deleted > 0:
+            msg += f', 거래내역 {trans_deleted}건'
+        messages.success(request, msg)
+        return redirect(f"{request.path}?year={fiscal_year}")
+
+    def upload_account(self, request):
+        """계정과목 엑셀 업로드"""
+        context = {
+            **self.admin_site.each_context(request),
+            'title': '계정과목 엑셀 업로드',
+            'opts': self.model._meta,
+        }
+
+        if request.method == 'POST':
+            excel_file = request.FILES.get('excel_file')
+            fiscal_year = request.POST.get('fiscal_year')
+
+            if not excel_file or not fiscal_year:
+                messages.error(request, '파일과 회계연도를 모두 입력해주세요.')
+                return TemplateResponse(request, 'admin/account_upload.html', context)
+
+            try:
+                fiscal_year = int(fiscal_year)
+            except ValueError:
+                messages.error(request, '회계연도는 숫자로 입력해주세요.')
+                return TemplateResponse(request, 'admin/account_upload.html', context)
+
+            try:
+                df = pd.read_excel(excel_file)
+            except Exception as e:
+                messages.error(request, f'엑셀 파일 읽기 오류: {e}')
+                return TemplateResponse(request, 'admin/account_upload.html', context)
+
+            # 계정과목 생성
+            created_count = 0
+            skipped_count = 0
+            code_counter = {}
+
+            with transaction.atomic():
+                for _, row in df.iterrows():
+                    account_type = str(row.get('계정유형', '')).strip()
+                    category_large = str(row.get('대분류', '')).strip()
+                    category_medium = str(row.get('중분류', '')).strip()
+                    category_small = str(row.get('소분류', '')).strip()
+                    account_name = str(row.get('계정명', '')).strip()
+                    account_name2 = str(row.get('계정명2', '')).strip() if pd.notna(row.get('계정명2')) else ''
+
+                    if not account_type or account_type == 'nan' or not account_name:
+                        continue
+
+                    # 계정코드 자동 생성
+                    type_prefix = {'ASSET': 'A', 'LIABILITY': 'L', 'EQUITY': 'E', 'INCOME': 'I', 'EXPENSE': 'X'}
+                    prefix = type_prefix.get(account_type, 'Z')
+                    code_counter[prefix] = code_counter.get(prefix, 0) + 1
+                    code = f"{prefix}{code_counter[prefix]:03d}"
+
+                    # 중복 체크
+                    if Account.objects.filter(fiscal_year=fiscal_year, account_name=account_name, account_type=account_type).exists():
+                        skipped_count += 1
+                        continue
+
+                    Account.objects.create(
+                        fiscal_year=fiscal_year,
+                        code=code,
+                        account_type=account_type,
+                        category_large=category_large,
+                        category_medium=category_medium,
+                        category_small=category_small,
+                        account_name=account_name,
+                        account_name2=account_name2,
+                    )
+                    created_count += 1
+
+            if created_count > 0:
+                messages.success(request, f'계정과목 {created_count}건 등록 완료' + (f' (중복 {skipped_count}건 제외)' if skipped_count else ''))
+            else:
+                messages.warning(request, '등록된 계정과목이 없습니다.')
+
+            return redirect('admin:finance_account_changelist')
+
+        return TemplateResponse(request, 'admin/account_upload.html', context)
 
 
 @admin.register(Member)

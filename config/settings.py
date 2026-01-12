@@ -123,6 +123,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -161,6 +164,11 @@ JAZZMIN_SETTINGS = {
     "custom_links": {
         "finance": [
             {
+                "name": "계정과목등록(예산입력)",
+                "url": "admin:account_main",
+                "icon": "fas fa-cogs",
+            },
+            {
                 "name": "거래내역조회/삭제",
                 "url": "admin:transaction_list",
                 "icon": "fas fa-list",
@@ -177,4 +185,5 @@ JAZZMIN_SETTINGS = {
         "finance.Settlement",
         "auth",
     ],
+    "hide_models": ["finance.Account"],
 }

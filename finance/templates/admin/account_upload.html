@@ -1,0 +1,50 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:finance_account_changelist' %}">계정과목</a></li>
+        <li class="breadcrumb-item active" aria-current="page">엑셀 업로드</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>계정과목 엑셀 업로드</h1>
+
+<div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+    <p><strong>업로드 파일 형식:</strong></p>
+    <p>엑셀 파일에 다음 컬럼이 필요합니다:</p>
+    <ul>
+        <li><strong>계정유형</strong>: ASSET(자산), LIABILITY(부채), EQUITY(자본), INCOME(수입), EXPENSE(비용)</li>
+        <li><strong>대분류</strong>: 예) 유동자산, 비유동자산, 유동부채, 자본 등</li>
+        <li><strong>중분류</strong>: 예) 당좌자산, 유형자산, 예수금 등</li>
+        <li><strong>소분류</strong>: 예) 현금, 예금, 집기비품 등</li>
+        <li><strong>계정명</strong>: 실제 사용할 계정명</li>
+        <li><strong>계정명2</strong>: 부가 설명 (선택사항)</li>
+    </ul>
+    <p><a href="{% static 'account_template.xlsx' %}" download>템플릿 다운로드</a></p>
+</div>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <fieldset class="module aligned">
+        <div class="form-row">
+            <label for="fiscal_year">회계연도:</label>
+            <input type="number" name="fiscal_year" id="fiscal_year" value="2026" required style="width: 100px;">
+        </div>
+        <div class="form-row" style="margin-top: 15px;">
+            <label for="excel_file">엑셀 파일:</label>
+            <input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls" required>
+        </div>
+    </fieldset>
+
+    <div class="submit-row" style="margin-top: 20px;">
+        <input type="submit" value="업로드" class="default">
+        <a href="{% url 'admin:finance_account_changelist' %}" class="deletelink" style="margin-left: 10px;">취소</a>
+    </div>
+</form>
+{% endblock %}

@@ -4,6 +4,7 @@
 ACCOUNT_TYPES = [
     ('ASSET', '자산'),
     ('LIABILITY', '부채'),
+    ('EQUITY', '자본'),
     ('INCOME', '수입'),
     ('EXPENSE', '비용'),
 ]
