@@ -7,6 +7,7 @@ from django.db.models import Sum
 from django.template.response import TemplateResponse
 from decimal import Decimal
 import pandas as pd
+import json
 
 from .models import Account, Member, Budget, FixedAsset, Transaction, Settlement
 
@@ -612,7 +613,6 @@ class TransactionAdmin(admin.ModelAdmin):
     list_display = ['date', 'transaction_type', 'account', 'description', 'amount', 'payment_method', 'status']
     list_filter = ['transaction_type', 'payment_method', 'status', 'date']
     search_fields = ['description', 'account__account_name']
-    autocomplete_fields = ['account']
     date_hierarchy = 'date'
     ordering = ['-date', '-created_at']
 
@@ -633,12 +633,52 @@ class TransactionAdmin(admin.ModelAdmin):
         """거래내역 조회/삭제 화면"""
         return super().changelist_view(request)
 
+    def get_accounts_json(self):
+        """현재 연도 계정과목을 JSON으로 반환"""
+        from datetime import datetime
+        current_year = datetime.now().year
+
+        # 현재 연도 계정과목 조회
+        accounts = Account.objects.filter(
+            fiscal_year=current_year,
+            is_active=True
+        ).order_by('account_type', 'code')
+
+        # 현재 연도에 계정이 없으면 가장 최근 연도 사용
+        if not accounts.exists():
+            latest_year = Account.objects.order_by('-fiscal_year').values_list('fiscal_year', flat=True).first()
+            if latest_year:
+                accounts = Account.objects.filter(
+                    fiscal_year=latest_year,
+                    is_active=True
+                ).order_by('account_type', 'code')
+
+        account_list = []
+        for acc in accounts:
+            display_name = f"[{acc.get_account_type_display()}] {acc.account_name}"
+            if acc.account_name2:
+                display_name += f" ({acc.account_name2})"
+            account_list.append({
+                'id': acc.id,
+                'account_type': acc.account_type,
+                'display_name': display_name,
+            })
+
+        return json.dumps(account_list, ensure_ascii=False)
+
     def add_view(self, request, form_url='', extra_context=None):
-        """추가 폼 화면 - 브레드크럼 단순화"""
+        """추가 폼 화면 - 구분별 계정과목 필터링"""
         extra_context = extra_context or {}
         extra_context['title'] = '거래내역추가'
         extra_context['show_save_and_add_another'] = False
+        extra_context['accounts_json'] = self.get_accounts_json()
         return super().add_view(request, form_url, extra_context)
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        """수정 폼 화면 - 구분별 계정과목 필터링"""
+        extra_context = extra_context or {}
+        extra_context['accounts_json'] = self.get_accounts_json()
+        return super().change_view(request, object_id, form_url, extra_context)
 
     def card_upload_view(self, request):
         """카드 엑셀 업로드 화면"""

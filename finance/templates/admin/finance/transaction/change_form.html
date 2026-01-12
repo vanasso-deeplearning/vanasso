@@ -1,4 +1,5 @@
 {% extends "admin/change_form.html" %}
+{% load i18n static %}
 
 {% block breadcrumbs %}
 <nav aria-label="breadcrumbs">
@@ -15,4 +16,164 @@
         <a href="{% url 'admin:card_upload' %}" class="addlink">카드 엑셀 업로드</a>
     </li>
 </ul>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    .field-account .select2-container {
+        min-width: 400px !important;
+    }
+    .account-filter-info {
+        margin-top: 8px;
+        padding: 6px 12px;
+        font-size: 13px;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    .account-filter-info.success {
+        background: #d4edda;
+        color: #155724;
+    }
+    .account-filter-info.warning {
+        background: #fff3cd;
+        color: #856404;
+    }
+    .account-filter-info.info {
+        background: #e7f1ff;
+        color: #004085;
+    }
+</style>
+{% endblock %}
+
+{% block after_field_sets %}
+{{ block.super }}
+<script>
+// 계정과목 데이터 (즉시 파싱)
+var _accountData = [];
+{% if accounts_json %}
+try {
+    _accountData = {{ accounts_json|safe }};
+} catch(e) {
+    console.error('계정과목 데이터 파싱 오류:', e);
+}
+{% endif %}
+
+// jQuery 로드 후 실행
+(function waitForJQuery() {
+    if (typeof jQuery === 'undefined') {
+        setTimeout(waitForJQuery, 50);
+        return;
+    }
+
+    var $ = jQuery;
+
+    // 설정
+    var ACCOUNT_TYPE_MAP = {
+        'INCOME': ['INCOME'],
+        'EXPENSE': ['EXPENSE'],
+        'TRANSFER': ['ASSET', 'LIABILITY']
+    };
+
+    var TYPE_NAMES = {
+        'INCOME': '수입',
+        'EXPENSE': '지출',
+        'ASSET': '자산',
+        'LIABILITY': '부채'
+    };
+
+    var $infoDiv = null;
+
+    // 필터링 함수
+    function filterAccounts(selectedType) {
+        var $account = $('#id_account');
+        var allowedTypes = ACCOUNT_TYPE_MAP[selectedType] || [];
+
+        console.log('선택된 구분:', selectedType, ', 허용 계정유형:', allowedTypes);
+
+        // 현재 선택값 저장
+        var currentValue = $account.val();
+
+        // Select2 destroy
+        if ($account.hasClass('select2-hidden-accessible')) {
+            $account.select2('destroy');
+        }
+
+        // 옵션 초기화
+        $account.empty();
+        $account.append('<option value="">---------</option>');
+
+        // 필터링된 계정과목 추가
+        var count = 0;
+        $.each(_accountData, function(i, acc) {
+            if (allowedTypes.length === 0 || allowedTypes.indexOf(acc.account_type) !== -1) {
+                var $opt = $('<option></option>')
+                    .val(acc.id)
+                    .text(acc.display_name);
+                if (acc.id.toString() === currentValue) {
+                    $opt.prop('selected', true);
+                }
+                $account.append($opt);
+                count++;
+            }
+        });
+
+        // Select2 재초기화
+        $account.select2({
+            width: '400px',
+            allowClear: true,
+            placeholder: '계정과목 선택'
+        });
+
+        // 안내 메시지 업데이트
+        if ($infoDiv) {
+            $infoDiv.removeClass('success warning info');
+            if (allowedTypes.length > 0 && count > 0) {
+                var names = $.map(allowedTypes, function(t) { return TYPE_NAMES[t] || t; }).join(', ');
+                $infoDiv.text(names + ' 계정 ' + count + '건').addClass('success');
+            } else if (selectedType && count === 0) {
+                $infoDiv.text('해당 유형의 계정이 없습니다.').addClass('warning');
+            } else {
+                $infoDiv.text('구분을 선택하세요').addClass('info');
+            }
+        }
+
+        console.log('필터링 결과:', count, '건');
+    }
+
+    // 전역 함수로 노출
+    window.filterAccounts = filterAccounts;
+
+    // 초기화 함수
+    function init() {
+        console.log('TransactionAccountFilter 초기화, 계정과목:', _accountData.length, '건');
+
+        var $account = $('#id_account');
+
+        // 안내 메시지 요소 생성
+        $infoDiv = $('<div class="account-filter-info info">구분을 선택하면 해당 계정만 표시됩니다.</div>');
+        $account.closest('.form-row, .field-account').append($infoDiv);
+
+        // 이벤트 리스너 등록 (중복 방지를 위해 namespace 사용)
+        $(document).off('change.accountFilter', '#id_transaction_type');
+        $(document).on('change.accountFilter', '#id_transaction_type', function() {
+            console.log('구분 변경:', $(this).val());
+            filterAccounts($(this).val());
+        });
+
+        // 초기 상태 처리
+        var initialType = $('#id_transaction_type').val();
+        if (initialType) {
+            setTimeout(function() {
+                filterAccounts(initialType);
+            }, 300);
+        }
+    }
+
+    // DOM Ready
+    $(document).ready(function() {
+        init();
+    });
+})();
+</script>
 {% endblock %}
