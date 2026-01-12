@@ -1,6 +1,39 @@
 {% extends "admin/base_site.html" %}
 {% load i18n humanize static %}
 
+{% block extrahead %}
+{{ block.super }}
+<!-- Select2 CSS -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+    /* Select2 테이블 내 스타일 조정 */
+    .cashbook-table .select2-container {
+        width: 100% !important;
+    }
+    .cashbook-table .select2-container--default .select2-selection--single {
+        border: none;
+        background: transparent;
+        height: 24px;
+        min-height: 24px;
+    }
+    .cashbook-table .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: 24px;
+        font-size: 11px;
+        padding-left: 2px;
+    }
+    .cashbook-table .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 22px;
+    }
+    .select2-results__option {
+        font-size: 12px;
+        padding: 4px 8px;
+    }
+    .select2-search--dropdown .select2-search__field {
+        font-size: 12px;
+    }
+</style>
+{% endblock %}
+
 {% block breadcrumbs %}
 <nav aria-label="breadcrumbs">
     <ol class="breadcrumb">
@@ -162,7 +195,7 @@
                     <td class="col-amount">
                         <input type="text" name="income_amount_{{ forloop.counter0 }}"
                                class="amount-input"
-                               value="{% if entry.amount %}{{ entry.amount|floatformat:0 }}{% endif %}"
+                               value="{% if entry.amount %}{{ entry.amount|floatformat:0|intcomma }}{% endif %}"
                                placeholder="금액">
                     </td>
                     {% if book_type == 'BANK' %}
@@ -219,7 +252,7 @@
                                placeholder="일" maxlength="2" style="text-align: center;">
                     </td>
                     <td class="col-category">
-                        <select name="expense_account_{{ forloop.counter0 }}">
+                        <select name="expense_account_{{ forloop.counter0 }}" class="expense-account-select">
                             <option value="">선택</option>
                             {% for acc in expense_accounts %}
                             <option value="{{ acc.id }}" {% if entry.account_id == acc.id %}selected{% endif %}>{{ acc.display_name }}</option>
@@ -229,7 +262,7 @@
                     <td class="col-amount">
                         <input type="text" name="expense_amount_{{ forloop.counter0 }}"
                                class="amount-input"
-                               value="{% if entry.amount %}{{ entry.amount|floatformat:0 }}{% endif %}"
+                               value="{% if entry.amount %}{{ entry.amount|floatformat:0|intcomma }}{% endif %}"
                                placeholder="금액">
                     </td>
                     <td class="col-bank">
@@ -259,6 +292,21 @@
 </div>
 
 <script>
+// Enter 키로 폼 제출 방지 (입력 필드에서 Enter 시 다음 필드로 이동)
+document.querySelectorAll('input[type="text"]').forEach(function(input) {
+    input.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            // 다음 입력 필드로 포커스 이동
+            var inputs = Array.from(document.querySelectorAll('input[type="text"], select'));
+            var currentIndex = inputs.indexOf(this);
+            if (currentIndex > -1 && currentIndex < inputs.length - 1) {
+                inputs[currentIndex + 1].focus();
+            }
+        }
+    });
+});
+
 // 금액 입력 시 천단위 콤마 자동 추가
 document.querySelectorAll('.amount-input').forEach(function(input) {
     input.addEventListener('blur', function() {
@@ -292,5 +340,22 @@ function updateTotals() {
 document.querySelectorAll('.amount-input').forEach(function(input) {
     input.addEventListener('input', updateTotals);
 });
+</script>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<!-- Select2 JS (jQuery는 Jazzmin/Django admin에서 이미 로드됨) -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function() {
+    // 지출내역 계정과목에 Select2 적용
+    jQuery('.expense-account-select').select2({
+        placeholder: '계정과목 검색...',
+        allowClear: true,
+        width: '100%',
+        dropdownParent: jQuery('.cashbook-container')
+    });
+})();
 </script>
 {% endblock %}

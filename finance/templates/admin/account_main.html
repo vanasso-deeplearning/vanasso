@@ -213,9 +213,6 @@
         <h3>4. 계정과목 목록 조회</h3>
         <p>등록된 계정과목을 조회하고 수정/삭제합니다.</p>
         <a href="{% url 'admin:finance_account_changelist' %}?fiscal_year={{ selected_year }}" class="btn btn-primary">목록 조회</a>
-        {% if budget_count > 0 %}
-        <a href="{% url 'admin:budget_view' fiscal_year=selected_year %}" class="btn btn-secondary">예산 조회</a>
-        {% endif %}
     </div>
 </div>
 

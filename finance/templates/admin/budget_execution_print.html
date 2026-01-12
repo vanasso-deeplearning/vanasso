@@ -1,0 +1,229 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ year }}년 {{ month }}월 예산집행 내역</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 10mm;
+        }
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print { display: none !important; }
+        }
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            font-size: 9px;
+            margin: 0;
+            padding: 10px;
+        }
+        .container {
+            max-width: 100%;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        .header h1 {
+            font-size: 16px;
+            margin: 0;
+            text-decoration: underline;
+        }
+        .header .approval-box {
+            display: flex;
+            border: 1px solid #000;
+        }
+        .header .approval-box .cell {
+            width: 45px;
+            text-align: center;
+            padding: 3px;
+            border-right: 1px solid #000;
+        }
+        .header .approval-box .cell:last-child {
+            border-right: none;
+        }
+        .header .approval-box .label {
+            background: #f0f0f0;
+            font-weight: bold;
+            font-size: 9px;
+            border-bottom: 1px solid #000;
+        }
+        .header .approval-box .sign {
+            height: 25px;
+        }
+        .unit {
+            text-align: right;
+            font-size: 9px;
+            margin-bottom: 5px;
+        }
+        .execution-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9px;
+        }
+        .execution-table th, .execution-table td {
+            border: 1px solid #000;
+            padding: 3px 4px;
+            text-align: center;
+        }
+        .execution-table th {
+            background: #e8e8e8;
+            font-weight: bold;
+        }
+        .execution-table .col-large { width: 50px; }
+        .execution-table .col-medium { width: 70px; text-align: left; }
+        .execution-table .col-item { text-align: left; }
+        .execution-table .col-budget { width: 75px; text-align: right; }
+        .execution-table .col-executed { width: 70px; text-align: right; }
+        .execution-table .col-rate { width: 35px; }
+        .execution-table .col-month { width: 65px; text-align: right; }
+        .execution-table .col-remaining { width: 70px; text-align: right; }
+        .execution-table .col-note { width: 80px; text-align: left; font-size: 8px; }
+        .execution-table .subtotal-row {
+            background: #f5f5f5;
+            font-weight: bold;
+        }
+        .execution-table .large-total-row {
+            background: #e8e8e8;
+            font-weight: bold;
+        }
+        .execution-table .total-row {
+            background: #d0d0d0;
+            font-weight: bold;
+        }
+        .execution-table .category-cell {
+            background: #f8f8f8;
+            font-weight: bold;
+            vertical-align: middle;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            letter-spacing: 2px;
+        }
+        .execution-table .medium-cell {
+            background: #fafafa;
+            vertical-align: middle;
+        }
+        .execution-table .amount-negative {
+            color: #c00;
+        }
+        .no-print {
+            margin-top: 15px;
+            text-align: center;
+        }
+        .no-print button {
+            padding: 8px 25px;
+            font-size: 13px;
+            margin: 0 8px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>{{ year }}년 {{ month }}월 예산집행 내역</h1>
+        <div class="approval-box">
+            <div class="cell">
+                <div class="label">담 당</div>
+                <div class="sign"></div>
+            </div>
+            <div class="cell">
+                <div class="label">국 장</div>
+                <div class="sign"></div>
+            </div>
+            <div class="cell">
+                <div class="label">회 장</div>
+                <div class="sign"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="unit">(단위 : 원)</div>
+
+    <table class="execution-table">
+        <thead>
+            <tr>
+                <th class="col-large" colspan="2">구 분</th>
+                <th class="col-item">내 역</th>
+                <th class="col-budget">연간 예산</th>
+                <th class="col-executed" colspan="2">집행현황<br>누계 및 예산대비(%)</th>
+                <th class="col-month">{{ month }}월 집행액</th>
+                <th class="col-remaining">잔여예산</th>
+                <th class="col-note">비 고</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for large_cat, large_data in execution_data.items %}
+                {% for med_cat, med_data in large_data.medium_categories.items %}
+                    {% for item in med_data.items %}
+                    <tr>
+                        {% if forloop.parentloop.first and forloop.first %}
+                        <td class="col-large category-cell" rowspan="{{ large_data.row_count }}">{{ large_cat }}</td>
+                        {% endif %}
+                        {% if forloop.first %}
+                        <td class="col-medium medium-cell" rowspan="{{ med_data.row_count }}">{{ med_cat }}</td>
+                        {% endif %}
+                        <td class="col-item">{{ item.display_name }}</td>
+                        <td class="col-budget">{{ item.annual_budget|floatformat:0|intcomma }}</td>
+                        <td class="col-executed">{% if item.cumulative %}{{ item.cumulative|floatformat:0|intcomma }}{% else %}-{% endif %}</td>
+                        <td class="col-rate">{{ item.exec_rate|floatformat:0 }}%</td>
+                        <td class="col-month">{% if item.monthly %}{{ item.monthly|floatformat:0|intcomma }}{% else %}-{% endif %}</td>
+                        <td class="col-remaining {% if item.remaining < 0 %}amount-negative{% endif %}">{{ item.remaining|floatformat:0|intcomma }}</td>
+                        <td class="col-note">{{ item.note }}</td>
+                    </tr>
+                    {% endfor %}
+                    <!-- 중분류 소계 행 (항목이 2개 이상일 때만 표시) -->
+                    {% if med_data.items|length > 1 %}
+                    <tr class="subtotal-row">
+                        <td class="col-item">소 계</td>
+                        <td class="col-budget">{{ med_data.subtotal_budget|floatformat:0|intcomma }}</td>
+                        <td class="col-executed">{{ med_data.subtotal_executed|floatformat:0|intcomma }}</td>
+                        <td class="col-rate">{{ med_data.subtotal_rate|floatformat:0 }}%</td>
+                        <td class="col-month">{% if med_data.subtotal_month %}{{ med_data.subtotal_month|floatformat:0|intcomma }}{% else %}-{% endif %}</td>
+                        <td class="col-remaining {% if med_data.subtotal_remaining < 0 %}amount-negative{% endif %}">{{ med_data.subtotal_remaining|floatformat:0|intcomma }}</td>
+                        <td class="col-note"></td>
+                    </tr>
+                    {% endif %}
+                {% endfor %}
+                <!-- 대분류 합계 행 -->
+                <tr class="large-total-row">
+                    <td colspan="3" style="text-align: center;">{{ large_cat }} 계</td>
+                    <td class="col-budget">{{ large_data.total_budget|floatformat:0|intcomma }}</td>
+                    <td class="col-executed">{{ large_data.total_executed|floatformat:0|intcomma }}</td>
+                    <td class="col-rate">{{ large_data.total_rate|floatformat:0 }}%</td>
+                    <td class="col-month">{% if large_data.total_month %}{{ large_data.total_month|floatformat:0|intcomma }}{% else %}-{% endif %}</td>
+                    <td class="col-remaining {% if large_data.total_remaining < 0 %}amount-negative{% endif %}">{{ large_data.total_remaining|floatformat:0|intcomma }}</td>
+                    <td class="col-note"></td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 20px;">예산 데이터가 없습니다.</td>
+                </tr>
+            {% endfor %}
+
+            {% if execution_data %}
+            <!-- 전체 합계 행 -->
+            <tr class="total-row">
+                <td colspan="3" style="text-align: center;">합 계</td>
+                <td class="col-budget">{{ grand_total_budget|floatformat:0|intcomma }}</td>
+                <td class="col-executed">{{ grand_total_executed|floatformat:0|intcomma }}</td>
+                <td class="col-rate">{{ grand_total_rate|floatformat:0 }}%</td>
+                <td class="col-month">{% if grand_total_month %}{{ grand_total_month|floatformat:0|intcomma }}{% else %}-{% endif %}</td>
+                <td class="col-remaining {% if grand_total_remaining < 0 %}amount-negative{% endif %}">{{ grand_total_remaining|floatformat:0|intcomma }}</td>
+                <td class="col-note"></td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <div class="no-print">
+        <button onclick="window.print()">인쇄</button>
+        <button onclick="window.close()">닫기</button>
+    </div>
+</div>
+</body>
+</html>

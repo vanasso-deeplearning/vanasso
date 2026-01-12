@@ -10,7 +10,6 @@ class Account(models.Model):
     category_medium = models.CharField('중분류(항)', max_length=50)
     category_small = models.CharField('소분류(목)', max_length=50)
     account_name = models.CharField('계정명', max_length=100, default='')  # 실제 계정명
-    account_name2 = models.CharField('계정명2', max_length=100, blank=True)  # 4대보험 세부 항목
     account_type = models.CharField('계정성격', max_length=10, choices=ACCOUNT_TYPES, default='EXPENSE')
     report_position = models.CharField('결산서 위치', max_length=50, blank=True)
     is_active = models.BooleanField('사용여부', default=True)
