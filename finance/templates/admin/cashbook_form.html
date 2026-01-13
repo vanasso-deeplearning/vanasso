@@ -144,12 +144,48 @@
         background: #28a745;
         color: white;
     }
+    .year-month-selector {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    .year-month-selector select {
+        padding: 6px 12px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .year-month-selector .btn-go {
+        padding: 6px 15px;
+        font-size: 13px;
+        background: #417690;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
 </style>
 
 <div class="cashbook-container">
     <div class="cashbook-header">
         <h1>{{ book_type_display }}</h1>
-        <div class="period">({{ year }}. {{ month }}월)</div>
+    </div>
+
+    <!-- 연월 선택 -->
+    <div class="year-month-selector">
+        <select id="select_year">
+            {% for y in year_range %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+            {% endfor %}
+        </select>
+        <select id="select_month">
+            {% for m in month_range %}
+            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}월</option>
+            {% endfor %}
+        </select>
+        <button type="button" class="btn-go" onclick="goToDate()">조회</button>
     </div>
 
     <form method="post" action="{% url 'admin:cashbook_save' %}">
@@ -187,7 +223,7 @@
                     <td class="col-category">
                         <select name="income_category_{{ forloop.counter0 }}">
                             <option value="">선택</option>
-                            {% for cat in categories %}
+                            {% for cat in income_categories %}
                             <option value="{{ cat.id }}" {% if entry.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
                             {% endfor %}
                         </select>
@@ -198,21 +234,10 @@
                                value="{% if entry.amount %}{{ entry.amount|floatformat:0|intcomma }}{% endif %}"
                                placeholder="금액">
                     </td>
-                    {% if book_type == 'BANK' %}
-                    <td class="col-bank">
-                        <select name="income_bank_{{ forloop.counter0 }}">
-                            <option value="">선택</option>
-                            {% for acc in bank_accounts %}
-                            <option value="{{ acc.id }}" {% if entry.bank_account_id == acc.id %}selected{% endif %}>{{ acc.account_number }}</option>
-                            {% endfor %}
-                        </select>
-                    </td>
-                    {% else %}
-                    <td>
+                    <td {% if book_type == 'BANK' %}class="col-bank"{% endif %}>
                         <input type="text" name="income_note_{{ forloop.counter0 }}"
                                value="{{ entry.note }}" placeholder="비고">
                     </td>
-                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -252,10 +277,10 @@
                                placeholder="일" maxlength="2" style="text-align: center;">
                     </td>
                     <td class="col-category">
-                        <select name="expense_account_{{ forloop.counter0 }}" class="expense-account-select">
+                        <select name="expense_item_{{ forloop.counter0 }}" class="expense-account-select">
                             <option value="">선택</option>
-                            {% for acc in expense_accounts %}
-                            <option value="{{ acc.id }}" {% if entry.account_id == acc.id %}selected{% endif %}>{{ acc.display_name }}</option>
+                            {% for item in expense_items %}
+                            <option value="{{ item.value }}" {% if entry.selected_value == item.value %}selected{% endif %}>{{ item.display_name }}</option>
                             {% endfor %}
                         </select>
                     </td>
@@ -340,6 +365,13 @@ function updateTotals() {
 document.querySelectorAll('.amount-input').forEach(function(input) {
     input.addEventListener('input', updateTotals);
 });
+
+// 연월 선택 후 이동
+function goToDate() {
+    var year = document.getElementById('select_year').value;
+    var month = document.getElementById('select_month').value;
+    window.location.href = "{% url 'admin:cashbook_view' book_type=book_type year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
+}
 </script>
 {% endblock %}
 

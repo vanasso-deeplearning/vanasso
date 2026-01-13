@@ -352,6 +352,21 @@ class FixedAssetAdmin(admin.ModelAdmin):
     ordering = ['-acquisition_date']
 
 
+@admin.register(CashBookCategory)
+class CashBookCategoryAdmin(admin.ModelAdmin):
+    list_display = ['book_type', 'entry_type', 'name', 'is_active']
+    list_filter = ['book_type', 'entry_type', 'is_active']
+    list_editable = ['is_active']
+    ordering = ['book_type', 'entry_type', 'name']
+
+
+@admin.register(BankAccount)
+class BankAccountAdmin(admin.ModelAdmin):
+    list_display = ['bank_name', 'account_number', 'account_holder', 'order', 'is_active']
+    list_editable = ['order', 'is_active']
+    ordering = ['order']
+
+
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
     list_display = ['date', 'transaction_type', 'account', 'description', 'amount', 'payment_method', 'status']
@@ -592,15 +607,15 @@ class CashBookAdmin(admin.ModelAdmin):
     def monthly_report_main(self, request):
         """월간보고서 메인 화면"""
         from datetime import datetime
-        current_year = datetime.now().year
         current_month = datetime.now().month
 
-        # 연도/월 선택
-        selected_year = int(request.GET.get('year', current_year))
+        # 연도/월 선택 (기본 연도: 2025년 - 테스트용)
+        default_year = 2025
+        selected_year = int(request.GET.get('year', default_year))
         selected_month = int(request.GET.get('month', current_month))
 
-        # 연도 목록
-        years = list(range(current_year + 1, current_year - 3, -1))
+        # 연도 목록 (2024~2027)
+        years = list(range(2027, 2023, -1))
         months = list(range(1, 13))
 
         context = {
@@ -623,28 +638,23 @@ class CashBookAdmin(admin.ModelAdmin):
         # 해당 월의 첫날, 마지막날
         _, last_day = monthrange(year, month)
 
-        # 과목 목록 (해당 출납장 유형)
-        categories = CashBookCategory.objects.filter(
-            book_type=book_type, is_active=True
-        ).order_by('order')
-
         # 계좌 목록 (예금출납장만)
         bank_accounts = BankAccount.objects.filter(is_active=True).order_by('order') if book_type == 'BANK' else []
 
-        # 지출 계정과목 목록 (예금출납장/현금출납장: Account 테이블에서 가져옴)
-        # account_name2가 있으면 account_name2를, 없으면 account_name을 표시
-        # EXPENSE와 LIABILITY 타입 모두 포함 (예수금 등)
-        from datetime import datetime
-        current_year = datetime.now().year
-        expense_accounts = []
+        # 수입 과목 (CashBookCategory - 수입)
+        income_categories = CashBookCategory.objects.filter(
+            book_type=book_type, entry_type='INCOME', is_active=True
+        ).order_by('name')
 
+        # 지출 과목: 계정과목(EXPENSE, LIABILITY) + 출납장과목(지출)
+        # 1. 계정과목 (EXPENSE, LIABILITY 타입)
         expense_accounts = list(Account.objects.filter(
-            fiscal_year=current_year,
+            fiscal_year=year,
             account_type__in=['EXPENSE', 'LIABILITY'],
             is_active=True
         ).order_by('code'))
 
-        # 현재 연도에 계정이 없으면 최근 연도 사용
+        # 해당 연도에 없으면 최근 연도 사용
         if not expense_accounts:
             latest_year = Account.objects.filter(account_type__in=['EXPENSE', 'LIABILITY']).order_by('-fiscal_year').values_list('fiscal_year', flat=True).first()
             if latest_year:
@@ -654,22 +664,48 @@ class CashBookAdmin(admin.ModelAdmin):
                     is_active=True
                 ).order_by('code'))
 
-        # 각 계정에 display_name 속성 추가
-        for acc in expense_accounts:
-            acc.display_name = acc.account_name
+        # 2. 출납장과목 (지출)
+        expense_categories = list(CashBookCategory.objects.filter(
+            book_type=book_type, entry_type='EXPENSE', is_active=True
+        ).order_by('name'))
 
-        # 기존 데이터 조회
+        # 지출 항목 통합 리스트 생성 (계정과목 + 출납장과목)
+        expense_items = []
+        for acc in expense_accounts:
+            expense_items.append({
+                'value': f"account:{acc.id}",
+                'display_name': acc.account_name,
+            })
+        for cat in expense_categories:
+            expense_items.append({
+                'value': f"category:{cat.id}",
+                'display_name': cat.name,
+            })
+
+        # 기존 데이터 조회 (수입: category_id 사용)
         income_entries = list(CashBook.objects.filter(
             book_type=book_type, year=year, month=month, entry_type='INCOME'
         ).order_by('order').values(
             'id', 'date', 'category_id', 'description', 'amount', 'bank_account_id', 'note', 'order'
         ))
 
-        expense_entries = list(CashBook.objects.filter(
+        # 지출 데이터 조회 (account_id 또는 category_id 사용)
+        expense_entries_raw = list(CashBook.objects.filter(
             book_type=book_type, year=year, month=month, entry_type='EXPENSE'
         ).order_by('order').values(
-            'id', 'date', 'category_id', 'description', 'amount', 'bank_account_id', 'note', 'order', 'account_id'
+            'id', 'date', 'account_id', 'category_id', 'description', 'amount', 'bank_account_id', 'note', 'order'
         ))
+
+        # 지출 항목에 선택값 형식 추가 (account:123 또는 category:456)
+        expense_entries = []
+        for entry in expense_entries_raw:
+            if entry['account_id']:
+                entry['selected_value'] = f"account:{entry['account_id']}"
+            elif entry['category_id']:
+                entry['selected_value'] = f"category:{entry['category_id']}"
+            else:
+                entry['selected_value'] = ''
+            expense_entries.append(entry)
 
         # 빈 행 추가 (예금출납장: 수입 20줄/지출 20줄, 현금출납장: 수입 5줄/지출 20줄)
         income_row_count = 20 if book_type == 'BANK' else 5
@@ -680,9 +716,9 @@ class CashBookAdmin(admin.ModelAdmin):
             })
         while len(expense_entries) < 20:
             expense_entries.append({
-                'id': None, 'date': None, 'category_id': None, 'description': '',
-                'amount': 0, 'bank_account_id': None, 'note': '', 'order': len(expense_entries),
-                'account_id': None
+                'id': None, 'date': None, 'account_id': None, 'category_id': None,
+                'selected_value': '', 'description': '',
+                'amount': 0, 'bank_account_id': None, 'note': '', 'order': len(expense_entries)
             })
 
         # 수입/지출 합계
@@ -690,6 +726,10 @@ class CashBookAdmin(admin.ModelAdmin):
         expense_total = sum(e['amount'] for e in expense_entries if e['amount'])
 
         book_type_display = '예금출납장' if book_type == 'BANK' else '현금출납장'
+
+        # 연월 선택용 범위 (기본 2025년)
+        year_range = list(range(2024, 2028))
+        month_range = list(range(1, 13))
 
         context = {
             **self.admin_site.each_context(request),
@@ -699,14 +739,16 @@ class CashBookAdmin(admin.ModelAdmin):
             'book_type_display': book_type_display,
             'year': year,
             'month': month,
-            'categories': categories,
             'bank_accounts': bank_accounts,
-            'expense_accounts': expense_accounts,
+            'income_categories': income_categories,
+            'expense_items': expense_items,
             'income_entries': income_entries,
             'expense_entries': expense_entries,
             'income_total': income_total,
             'expense_total': expense_total,
             'last_day': last_day,
+            'year_range': year_range,
+            'month_range': month_range,
         }
 
         return TemplateResponse(request, 'admin/cashbook_form.html', context)
@@ -731,7 +773,7 @@ class CashBookAdmin(admin.ModelAdmin):
 
         saved_count = 0
 
-        # 수입 내역 저장 (과목 선택)
+        # 수입 내역 저장 (CashBookCategory 사용)
         idx = 0
         while True:
             day = request.POST.get(f'income_day_{idx}')
@@ -770,7 +812,8 @@ class CashBookAdmin(admin.ModelAdmin):
 
             idx += 1
 
-        # 지출 내역 저장 (예금출납장은 Transaction에도 동시 저장)
+        # 지출 내역 저장 (account:123 또는 category:456 형식)
+        # 예금출납장 + 계정과목(비용/부채) 선택 시 Transaction에도 동시 저장
         idx = 0
         transaction_saved = 0
         while True:
@@ -778,22 +821,32 @@ class CashBookAdmin(admin.ModelAdmin):
             if day is None:
                 break
 
-            account_id = request.POST.get(f'expense_account_{idx}', '').strip()
+            item_value = request.POST.get(f'expense_item_{idx}', '').strip()
             amount_str = request.POST.get(f'expense_amount_{idx}', '0').replace(',', '')
             note = request.POST.get(f'expense_note_{idx}', '').strip()
 
-            if day and account_id:
+            if day and item_value:
                 try:
                     from datetime import date
                     entry_date = date(year, month, int(day))
                     amount = Decimal(amount_str) if amount_str else Decimal('0')
 
-                    account = Account.objects.get(pk=account_id)
-                    display_name = account.account_name
+                    # item_value 파싱 (account:123 또는 category:456)
+                    item_type, item_id = item_value.split(':')
+                    account = None
+                    category = None
+                    display_name = ''
 
-                    # 예금출납장 지출은 Transaction 테이블에도 저장
+                    if item_type == 'account':
+                        account = Account.objects.get(pk=int(item_id))
+                        display_name = account.account_name
+                    elif item_type == 'category':
+                        category = CashBookCategory.objects.get(pk=int(item_id))
+                        display_name = category.name
+
+                    # 예금출납장 + 계정과목 선택 시 Transaction 테이블에도 저장
                     linked_trans = None
-                    if book_type == 'BANK' and amount > 0:
+                    if book_type == 'BANK' and account and amount > 0:
                         linked_trans = Transaction.objects.create(
                             date=entry_date,
                             transaction_type='EXPENSE',
@@ -812,6 +865,7 @@ class CashBookAdmin(admin.ModelAdmin):
                         entry_type='EXPENSE',
                         date=entry_date,
                         account=account,
+                        category=category,
                         description=display_name,
                         amount=amount,
                         note=note,
@@ -989,12 +1043,18 @@ class CashBookAdmin(admin.ModelAdmin):
         """월간예산집행내역 조회"""
         data = self._get_budget_execution_data(year, month)
 
+        # 연월 선택용 범위 (기본 2025년)
+        year_range = list(range(2024, 2028))
+        month_range = list(range(1, 13))
+
         context = {
             **self.admin_site.each_context(request),
             'title': f'{year}년 {month}월 예산집행 내역',
             'opts': self.model._meta,
             'year': year,
             'month': month,
+            'year_range': year_range,
+            'month_range': month_range,
             **data,
         }
 

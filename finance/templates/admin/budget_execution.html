@@ -103,15 +103,52 @@
     .execution-table .amount-negative {
         color: #dc3545;
     }
+    .year-month-selector {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .year-month-selector select {
+        padding: 6px 12px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .year-month-selector .btn-go {
+        padding: 6px 15px;
+        font-size: 13px;
+        background: #417690;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
 </style>
 
 <div class="execution-container">
     <div class="execution-header">
         <div>
-            <h1>{{ year }}년 {{ month }}월 예산집행 내역</h1>
+            <h1>월간 예산집행 내역</h1>
             <div class="subtitle">담 당 / 국 장 / 회 장</div>
         </div>
         <div class="unit">(단위 : 원)</div>
+    </div>
+
+    <!-- 연월 선택 -->
+    <div class="year-month-selector">
+        <select id="select_year">
+            {% for y in year_range %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+            {% endfor %}
+        </select>
+        <select id="select_month">
+            {% for m in month_range %}
+            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}월</option>
+            {% endfor %}
+        </select>
+        <button type="button" class="btn-go" onclick="goToDate()">조회</button>
     </div>
 
     <div class="btn-row">
@@ -199,4 +236,12 @@
         </tbody>
     </table>
 </div>
+
+<script>
+function goToDate() {
+    var year = document.getElementById('select_year').value;
+    var month = document.getElementById('select_month').value;
+    window.location.href = "{% url 'admin:budget_execution' year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
+}
+</script>
 {% endblock %}

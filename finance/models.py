@@ -159,25 +159,30 @@ class Settlement(models.Model):
 
 
 class CashBookCategory(models.Model):
-    """출납장 과목 (예금출납장/현금출납장 수입 항목)"""
+    """출납장 과목 (예금출납장/현금출납장 수입/지출 항목)"""
     BOOK_TYPES = [
         ('BANK', '예금출납장'),
         ('CASH', '현금출납장'),
     ]
 
+    ENTRY_TYPES = [
+        ('INCOME', '수입'),
+        ('EXPENSE', '지출'),
+    ]
+
     book_type = models.CharField('출납장유형', max_length=10, choices=BOOK_TYPES)
+    entry_type = models.CharField('구분', max_length=10, choices=ENTRY_TYPES, default='INCOME')
     name = models.CharField('과목명', max_length=50)
-    order = models.IntegerField('순서', default=0)
     is_active = models.BooleanField('사용여부', default=True)
 
     class Meta:
         verbose_name = '출납장과목'
         verbose_name_plural = '출납장과목'
-        ordering = ['book_type', 'order']
-        unique_together = ['book_type', 'name']
+        ordering = ['book_type', 'entry_type', 'name']
+        unique_together = ['book_type', 'entry_type', 'name']
 
     def __str__(self):
-        return f"[{self.get_book_type_display()}] {self.name}"
+        return f"[{self.get_book_type_display()}/{self.get_entry_type_display()}] {self.name}"
 
 
 class BankAccount(models.Model):

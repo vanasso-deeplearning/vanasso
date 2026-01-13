@@ -20,25 +20,6 @@
         margin-bottom: 20px;
         color: #333;
     }
-    .year-month-box {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 25px;
-        padding: 12px 15px;
-        background: #f0f0f0;
-        border-radius: 4px;
-    }
-    .year-month-box label {
-        font-weight: bold;
-        font-size: 14px;
-    }
-    .year-month-box select {
-        padding: 6px 12px;
-        font-size: 14px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-    }
     .report-list {
         list-style: none;
         padding: 0;
@@ -88,20 +69,6 @@
 <div class="report-container">
     <h1>월간보고서</h1>
 
-    <div class="year-month-box">
-        <label>기준연월:</label>
-        <select id="select_year">
-            {% for year in years %}
-            <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}년</option>
-            {% endfor %}
-        </select>
-        <select id="select_month">
-            {% for m in months %}
-            <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}월</option>
-            {% endfor %}
-        </select>
-    </div>
-
     <ul class="report-list">
         <li>
             <a href="{% url 'admin:cashbook_view' book_type='BANK' year=selected_year month=selected_month %}" class="report-item">
@@ -126,15 +93,4 @@
         </li>
     </ul>
 </div>
-
-<script>
-document.getElementById('select_year').addEventListener('change', updateUrl);
-document.getElementById('select_month').addEventListener('change', updateUrl);
-
-function updateUrl() {
-    var year = document.getElementById('select_year').value;
-    var month = document.getElementById('select_month').value;
-    window.location.href = '{% url "admin:monthly_report" %}?year=' + year + '&month=' + month;
-}
-</script>
 {% endblock %}
