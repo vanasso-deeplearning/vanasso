@@ -1,0 +1,319 @@
+{% extends "admin/base_site.html" %}
+{% load i18n humanize static %}
+
+{% block extrahead %}
+{{ block.super }}
+<!-- Select2 CSS -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+    /* Select2 테이블 내 스타일 조정 */
+    .cashbook-table .select2-container {
+        width: 100% !important;
+    }
+    .cashbook-table .select2-container--default .select2-selection--single {
+        border: none;
+        background: transparent;
+        height: 24px;
+        min-height: 24px;
+    }
+    .cashbook-table .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: 24px;
+        font-size: 11px;
+        padding-left: 2px;
+    }
+    .cashbook-table .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 22px;
+    }
+    .select2-results__option {
+        font-size: 12px;
+        padding: 4px 8px;
+    }
+    .select2-search--dropdown .select2-search__field {
+        font-size: 12px;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:monthly_report' %}?year={{ year }}&month={{ month }}">월간보고서</a></li>
+        <li class="breadcrumb-item active">예수금출납장</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .cashbook-container {
+        max-width: 700px;
+    }
+    .cashbook-header {
+        text-align: center;
+        margin-bottom: 15px;
+    }
+    .cashbook-header h1 {
+        font-size: 22px;
+        text-decoration: underline;
+        margin-bottom: 5px;
+    }
+    .cashbook-header .period {
+        font-size: 14px;
+        color: #666;
+    }
+    .section-title {
+        font-size: 14px;
+        font-weight: bold;
+        margin: 15px 0 8px 0;
+        display: flex;
+        justify-content: space-between;
+    }
+    .section-title .unit {
+        font-weight: normal;
+        color: #888;
+    }
+    .cashbook-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        table-layout: fixed;
+    }
+    .cashbook-table th, .cashbook-table td {
+        border: 1px solid #999;
+        padding: 3px 5px;
+        text-align: center;
+    }
+    .cashbook-table th {
+        background: #e8e8e8;
+        font-weight: normal;
+    }
+    .cashbook-table .col-day { width: 50px; }
+    .cashbook-table .col-category { width: 150px; }
+    .cashbook-table .col-amount { width: 110px; text-align: right; }
+    .cashbook-table .col-note { width: 200px; }
+    .cashbook-table input[type="text"],
+    .cashbook-table input[type="number"] {
+        width: 100%;
+        border: none;
+        background: transparent;
+        padding: 2px;
+        font-size: 12px;
+        box-sizing: border-box;
+    }
+    .cashbook-table select {
+        width: 100%;
+        border: none;
+        background: transparent;
+        padding: 2px;
+        font-size: 11px;
+        box-sizing: border-box;
+    }
+    .cashbook-table input.amount-input {
+        text-align: right;
+    }
+    .cashbook-table .subtotal-row {
+        background: #f5f5f5;
+        font-weight: bold;
+    }
+    .cashbook-table .subtotal-row td {
+        text-align: center;
+    }
+    .btn-row {
+        margin-top: 15px;
+        display: flex;
+        gap: 10px;
+    }
+    .btn-row .btn {
+        padding: 8px 20px;
+        font-size: 13px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .btn-row .btn-primary {
+        background: #417690;
+        color: white;
+    }
+    .btn-row .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+    .year-month-selector {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    .year-month-selector select {
+        padding: 6px 12px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .year-month-selector .btn-go {
+        padding: 6px 15px;
+        font-size: 13px;
+        background: #417690;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+</style>
+
+<div class="cashbook-container">
+    <div class="cashbook-header">
+        <h1>예수금출납장(월간보고용)</h1>
+    </div>
+
+    <!-- 연월 선택 -->
+    <div class="year-month-selector">
+        <select id="select_year">
+            {% for y in year_range %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+            {% endfor %}
+        </select>
+        <select id="select_month">
+            {% for m in month_range %}
+            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}월</option>
+            {% endfor %}
+        </select>
+        <button type="button" class="btn-go" onclick="goToDate()">조회</button>
+    </div>
+
+    <form method="post" action="{% url 'admin:deposit_ledger_save' %}">
+        {% csrf_token %}
+        <input type="hidden" name="year" value="{{ year }}">
+        <input type="hidden" name="month" value="{{ month }}">
+
+        <!-- 지출내역 -->
+        <div class="section-title">
+            <span>지출내역</span>
+            <span class="unit">(단위 : 원)</span>
+        </div>
+        <table class="cashbook-table">
+            <thead>
+                <tr>
+                    <th class="col-day">일 자</th>
+                    <th class="col-category">내 용</th>
+                    <th class="col-amount">금 액</th>
+                    <th class="col-note">비 고</th>
+                </tr>
+            </thead>
+            <tbody id="expense_tbody">
+                {% for entry in expense_entries %}
+                <tr>
+                    <td class="col-day">
+                        <input type="text" name="expense_day_{{ forloop.counter0 }}"
+                               value="{% if entry.date %}{{ entry.date.day }}{% endif %}"
+                               placeholder="일" maxlength="2" style="text-align: center;">
+                    </td>
+                    <td class="col-category">
+                        <select name="expense_category_{{ forloop.counter0 }}" class="expense-category-select">
+                            <option value="">선택</option>
+                            {% for cat in expense_categories %}
+                            <option value="{{ cat.id }}" {% if entry.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td class="col-amount">
+                        <input type="text" name="expense_amount_{{ forloop.counter0 }}"
+                               class="amount-input"
+                               value="{% if entry.amount %}{{ entry.amount|floatformat:0|intcomma }}{% endif %}"
+                               placeholder="금액">
+                    </td>
+                    <td class="col-note">
+                        <input type="text" name="expense_note_{{ forloop.counter0 }}"
+                               value="{{ entry.note }}" placeholder="비고">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="subtotal-row">
+                    <td colspan="2">소 계</td>
+                    <td class="col-amount" id="expense_total">{{ expense_total|floatformat:0|intcomma }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div class="btn-row">
+            <button type="submit" class="btn btn-primary">저장</button>
+            <a href="{% url 'admin:monthly_report' %}?year={{ year }}&month={{ month }}"
+               class="btn btn-secondary">목록</a>
+        </div>
+    </form>
+</div>
+
+<script>
+// Enter 키로 폼 제출 방지 (입력 필드에서 Enter 시 다음 필드로 이동)
+document.querySelectorAll('input[type="text"]').forEach(function(input) {
+    input.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            // 다음 입력 필드로 포커스 이동
+            var inputs = Array.from(document.querySelectorAll('input[type="text"], select'));
+            var currentIndex = inputs.indexOf(this);
+            if (currentIndex > -1 && currentIndex < inputs.length - 1) {
+                inputs[currentIndex + 1].focus();
+            }
+        }
+    });
+});
+
+// 금액 입력 시 천단위 콤마 자동 추가
+document.querySelectorAll('.amount-input').forEach(function(input) {
+    input.addEventListener('blur', function() {
+        var val = this.value.replace(/,/g, '');
+        if (val && !isNaN(val)) {
+            this.value = parseInt(val).toLocaleString();
+        }
+    });
+    input.addEventListener('focus', function() {
+        this.value = this.value.replace(/,/g, '');
+    });
+});
+
+// 합계 자동 계산
+function updateTotals() {
+    var expenseTotal = 0;
+    document.querySelectorAll('input[name^="expense_amount_"]').forEach(function(input) {
+        var val = parseInt(input.value.replace(/,/g, '')) || 0;
+        expenseTotal += val;
+    });
+    document.getElementById('expense_total').textContent = expenseTotal.toLocaleString();
+}
+
+document.querySelectorAll('.amount-input').forEach(function(input) {
+    input.addEventListener('input', updateTotals);
+});
+
+// 연월 선택 후 이동
+function goToDate() {
+    var year = document.getElementById('select_year').value;
+    var month = document.getElementById('select_month').value;
+    window.location.href = "{% url 'admin:deposit_ledger' year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
+}
+</script>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<!-- Select2 JS (jQuery는 Jazzmin/Django admin에서 이미 로드됨) -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function() {
+    // 지출내역 과목에 Select2 적용
+    jQuery('.expense-category-select').select2({
+        placeholder: '과목 검색...',
+        allowClear: true,
+        width: '100%',
+        dropdownParent: jQuery('.cashbook-container')
+    });
+})();
+</script>
+{% endblock %}

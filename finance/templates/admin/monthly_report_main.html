@@ -85,8 +85,15 @@
             </a>
         </li>
         <li>
-            <a href="{% url 'admin:budget_execution' year=selected_year month=selected_month %}" class="report-item">
+            <a href="{% url 'admin:deposit_ledger' year=selected_year month=selected_month %}" class="report-item">
                 <span class="number">3</span>
+                <span class="title">예수금출납장(월간보고용)</span>
+                <div class="desc">예수금의 월별 지출 내역을 기록합니다.</div>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:budget_execution' year=selected_year month=selected_month %}" class="report-item">
+                <span class="number">4</span>
                 <span class="title">월간 예산집행 내역</span>
                 <div class="desc">예산 대비 집행 현황을 조회합니다.</div>
             </a>

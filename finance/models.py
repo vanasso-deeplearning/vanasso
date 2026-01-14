@@ -5,7 +5,7 @@ from common.constants import ACCOUNT_TYPES, SETTLEMENT_STATUS, DEPRECIATION_METH
 class Account(models.Model):
     """계정과목 (AccountSubject) - 연도별로 관리"""
     fiscal_year = models.IntegerField('회계연도', default=2026)
-    code = models.CharField('계정코드', max_length=10)
+    code = models.CharField('계정코드', max_length=10, blank=True)
     category_large = models.CharField('대분류(관)', max_length=50)  # 인건비, 사업비
     category_medium = models.CharField('중분류(항)', max_length=50)
     category_small = models.CharField('소분류(목)', max_length=50)
@@ -159,10 +159,11 @@ class Settlement(models.Model):
 
 
 class CashBookCategory(models.Model):
-    """출납장 과목 (예금출납장/현금출납장 수입/지출 항목)"""
+    """출납장 과목 (예금출납장/현금출납장/예수금출납장 수입/지출 항목)"""
     BOOK_TYPES = [
         ('BANK', '예금출납장'),
         ('CASH', '현금출납장'),
+        ('DEPOSIT', '예수금출납장'),
     ]
 
     ENTRY_TYPES = [
@@ -203,10 +204,11 @@ class BankAccount(models.Model):
 
 
 class CashBook(models.Model):
-    """출납장 (예금출납장/현금출납장)"""
+    """출납장 (예금출납장/현금출납장/예수금출납장)"""
     BOOK_TYPES = [
         ('BANK', '예금출납장'),
         ('CASH', '현금출납장'),
+        ('DEPOSIT', '예수금출납장'),
     ]
 
     ENTRY_TYPES = [

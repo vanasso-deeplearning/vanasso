@@ -45,6 +45,36 @@ class AccountAdmin(admin.ModelAdmin):
     search_fields = ['code', 'account_name', 'category_small']
     ordering = ['fiscal_year', 'code']
 
+    def save_model(self, request, obj, form, change):
+        """계정코드 자동 생성 (비어있을 경우)"""
+        if not obj.code:
+            # 계정유형별 prefix
+            type_prefix = {
+                'ASSET': 'A', 'LIABILITY': 'L', 'EQUITY': 'E',
+                'INCOME': 'I', 'EXPENSE': 'X'
+            }
+            prefix = type_prefix.get(obj.account_type, 'Z')
+
+            # 같은 연도, 같은 유형의 최대 코드 조회
+            existing_codes = Account.objects.filter(
+                fiscal_year=obj.fiscal_year,
+                code__startswith=prefix
+            ).values_list('code', flat=True)
+
+            # 최대 번호 찾기
+            max_num = 0
+            for code in existing_codes:
+                try:
+                    num = int(code[1:])  # prefix 제외한 숫자 부분
+                    if num > max_num:
+                        max_num = num
+                except (ValueError, IndexError):
+                    pass
+
+            obj.code = f"{prefix}{max_num + 1:03d}"
+
+        super().save_model(request, obj, form, change)
+
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
@@ -595,6 +625,8 @@ class CashBookAdmin(admin.ModelAdmin):
             path('cashbook/<str:book_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.cashbook_view), name='cashbook_view'),
             path('cashbook/save/', self.admin_site.admin_view(self.cashbook_save), name='cashbook_save'),
             path('cashbook/pdf/<str:book_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.cashbook_pdf), name='cashbook_pdf'),
+            path('deposit-ledger/<int:year>/<int:month>/', self.admin_site.admin_view(self.deposit_ledger_view), name='deposit_ledger'),
+            path('deposit-ledger/save/', self.admin_site.admin_view(self.deposit_ledger_save), name='deposit_ledger_save'),
             path('budget-execution/<int:year>/<int:month>/', self.admin_site.admin_view(self.budget_execution_view), name='budget_execution'),
             path('budget-execution/print/<int:year>/<int:month>/', self.admin_site.admin_view(self.budget_execution_print), name='budget_execution_print'),
         ]
@@ -646,21 +678,21 @@ class CashBookAdmin(admin.ModelAdmin):
             book_type=book_type, entry_type='INCOME', is_active=True
         ).order_by('name')
 
-        # 지출 과목: 계정과목(EXPENSE, LIABILITY) + 출납장과목(지출)
-        # 1. 계정과목 (EXPENSE, LIABILITY 타입)
+        # 지출 과목: 계정과목(EXPENSE, LIABILITY, EQUITY) + 출납장과목(지출)
+        # 1. 계정과목 (EXPENSE, LIABILITY, EQUITY 타입)
         expense_accounts = list(Account.objects.filter(
             fiscal_year=year,
-            account_type__in=['EXPENSE', 'LIABILITY'],
+            account_type__in=['EXPENSE', 'LIABILITY', 'EQUITY'],
             is_active=True
         ).order_by('code'))
 
         # 해당 연도에 없으면 최근 연도 사용
         if not expense_accounts:
-            latest_year = Account.objects.filter(account_type__in=['EXPENSE', 'LIABILITY']).order_by('-fiscal_year').values_list('fiscal_year', flat=True).first()
+            latest_year = Account.objects.filter(account_type__in=['EXPENSE', 'LIABILITY', 'EQUITY']).order_by('-fiscal_year').values_list('fiscal_year', flat=True).first()
             if latest_year:
                 expense_accounts = list(Account.objects.filter(
                     fiscal_year=latest_year,
-                    account_type__in=['EXPENSE', 'LIABILITY'],
+                    account_type__in=['EXPENSE', 'LIABILITY', 'EQUITY'],
                     is_active=True
                 ).order_by('code'))
 
@@ -919,6 +951,110 @@ class CashBookAdmin(admin.ModelAdmin):
         }
 
         return TemplateResponse(request, 'admin/cashbook_print.html', context)
+
+    def deposit_ledger_view(self, request, year, month):
+        """예수금출납장 조회/편집 화면 (지출내역만)"""
+        from datetime import date
+        from calendar import monthrange
+
+        # 해당 월의 마지막날
+        _, last_day = monthrange(year, month)
+
+        # 예수금출납장 지출과목 (CashBookCategory - DEPOSIT - 지출)
+        expense_categories = list(CashBookCategory.objects.filter(
+            book_type='DEPOSIT', entry_type='EXPENSE', is_active=True
+        ).order_by('name'))
+
+        # 기존 데이터 조회 (지출만)
+        expense_entries = list(CashBook.objects.filter(
+            book_type='DEPOSIT', year=year, month=month, entry_type='EXPENSE'
+        ).order_by('order').values(
+            'id', 'date', 'category_id', 'description', 'amount', 'note', 'order'
+        ))
+
+        # 빈 행 추가 (5줄)
+        while len(expense_entries) < 5:
+            expense_entries.append({
+                'id': None, 'date': None, 'category_id': None, 'description': '',
+                'amount': 0, 'note': '', 'order': len(expense_entries)
+            })
+
+        # 지출 합계
+        expense_total = sum(e['amount'] for e in expense_entries if e['amount'])
+
+        # 연월 선택용 범위
+        year_range = list(range(2024, 2028))
+        month_range = list(range(1, 13))
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'예수금출납장(월간보고용) ({year}. {month}월)',
+            'opts': self.model._meta,
+            'year': year,
+            'month': month,
+            'expense_categories': expense_categories,
+            'expense_entries': expense_entries,
+            'expense_total': expense_total,
+            'last_day': last_day,
+            'year_range': year_range,
+            'month_range': month_range,
+        }
+
+        return TemplateResponse(request, 'admin/deposit_ledger_form.html', context)
+
+    def deposit_ledger_save(self, request):
+        """예수금출납장 저장"""
+        if request.method != 'POST':
+            return redirect('admin:monthly_report')
+
+        year = int(request.POST.get('year'))
+        month = int(request.POST.get('month'))
+
+        # 기존 데이터 삭제
+        CashBook.objects.filter(book_type='DEPOSIT', year=year, month=month).delete()
+
+        saved_count = 0
+
+        # 지출 내역 저장
+        idx = 0
+        while True:
+            day = request.POST.get(f'expense_day_{idx}')
+            if day is None:
+                break
+
+            category_id = request.POST.get(f'expense_category_{idx}', '').strip()
+            amount_str = request.POST.get(f'expense_amount_{idx}', '0').replace(',', '')
+            note = request.POST.get(f'expense_note_{idx}', '').strip()
+
+            if day and category_id:
+                try:
+                    from datetime import date
+                    entry_date = date(year, month, int(day))
+                    amount = Decimal(amount_str) if amount_str else Decimal('0')
+
+                    category = CashBookCategory.objects.get(pk=category_id)
+
+                    CashBook.objects.create(
+                        book_type='DEPOSIT',
+                        year=year,
+                        month=month,
+                        entry_type='EXPENSE',
+                        date=entry_date,
+                        category=category,
+                        description=category.name,
+                        amount=amount,
+                        note=note,
+                        order=saved_count,
+                    )
+                    saved_count += 1
+                except Exception as e:
+                    pass
+
+            idx += 1
+
+        messages.success(request, f'{year}년 {month}월 예수금출납장(월간보고용) 저장 완료 ({saved_count}건)')
+
+        return redirect('admin:deposit_ledger', year=year, month=month)
 
     def _get_budget_execution_data(self, year, month):
         """월간예산집행내역 데이터 조회 (공통 로직)"""
