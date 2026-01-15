@@ -1,0 +1,235 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static humanize %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:account_main' %}">계정과목등록</a></li>
+        <li class="breadcrumb-item active" aria-current="page">예산 일괄 수정/편집</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .budget-edit-container {
+        max-width: 1000px;
+        margin: 0;
+    }
+    .budget-edit-container h1 {
+        font-size: 20px;
+        margin-bottom: 20px;
+        color: #333;
+    }
+    .year-select-box {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 20px;
+        padding: 12px 15px;
+        background: #f0f0f0;
+        border-radius: 4px;
+    }
+    .year-select-box label {
+        font-weight: bold;
+        font-size: 14px;
+    }
+    .year-select-box select {
+        padding: 6px 12px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .budget-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+        font-size: 13px;
+    }
+    .budget-table th, .budget-table td {
+        border: 1px solid #ddd;
+        padding: 8px 10px;
+        text-align: left;
+    }
+    .budget-table th {
+        background: #417690;
+        color: white;
+        font-weight: bold;
+    }
+    .budget-table tr:nth-child(even) {
+        background: #f9f9f9;
+    }
+    .budget-table tr:hover {
+        background: #f0f7ff;
+    }
+    .budget-table .code-col {
+        width: 80px;
+        text-align: center;
+    }
+    .budget-table .category-col {
+        width: 200px;
+    }
+    .budget-table .name-col {
+        width: 200px;
+    }
+    .budget-table .amount-col {
+        width: 150px;
+    }
+    .budget-table input[type="text"] {
+        width: 100%;
+        padding: 4px 8px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        font-size: 13px;
+        box-sizing: border-box;
+    }
+    .budget-table input.amount-input {
+        text-align: right;
+    }
+    .budget-table input:focus {
+        outline: none;
+        border-color: #417690;
+        background: #fff;
+    }
+    .btn-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    .btn {
+        display: inline-block;
+        padding: 8px 20px;
+        font-size: 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .btn-primary {
+        background: #417690;
+        color: white;
+    }
+    .btn-primary:hover {
+        background: #205067;
+    }
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+    .btn-secondary:hover {
+        background: #545b62;
+    }
+    .summary-box {
+        background: #e8f4f8;
+        padding: 10px 15px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+        font-size: 13px;
+    }
+    .summary-box strong {
+        color: #417690;
+    }
+</style>
+
+<div class="budget-edit-container">
+    <h1>예산 일괄 수정/편집</h1>
+
+    <!-- 회계연도 선택 -->
+    <div class="year-select-box">
+        <label>회계연도:</label>
+        <select id="fiscal_year" onchange="updateYear(this.value)">
+            {% for y in year_range %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {% if budgets %}
+    <div class="summary-box">
+        <strong>{{ year }}년 예산:</strong> 총 {{ budgets|length }}건,
+        합계 <strong id="total-amount">{{ total_budget|intcomma }}</strong>원
+    </div>
+
+    <form method="post" action="{% url 'admin:budget_edit_save' %}">
+        {% csrf_token %}
+        <input type="hidden" name="year" value="{{ year }}">
+
+        <table class="budget-table">
+            <thead>
+                <tr>
+                    <th class="code-col">코드</th>
+                    <th class="category-col">분류 (대/중/소)</th>
+                    <th class="name-col">계정명</th>
+                    <th class="amount-col">연간예산액</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in budgets %}
+                <tr>
+                    <td class="code-col">{{ item.account.code }}</td>
+                    <td class="category-col">{{ item.account.category_large }} / {{ item.account.category_medium }} / {{ item.account.category_small }}</td>
+                    <td class="name-col">
+                        <input type="hidden" name="budget_id_{{ forloop.counter0 }}" value="{{ item.id }}">
+                        <input type="text" name="account_name_{{ forloop.counter0 }}" value="{{ item.account.account_name }}">
+                    </td>
+                    <td class="amount-col">
+                        <input type="text" name="amount_{{ forloop.counter0 }}" value="{{ item.annual_amount|intcomma }}" class="amount-input" oninput="formatNumber(this)" onchange="updateTotal()">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <input type="hidden" name="total_count" value="{{ budgets|length }}">
+
+        <div class="btn-row">
+            <button type="submit" class="btn btn-primary">저장</button>
+            <a href="{% url 'admin:account_main' %}?year={{ year }}" class="btn btn-secondary">취소</a>
+        </div>
+    </form>
+    {% else %}
+    <p>{{ year }}년에 등록된 예산이 없습니다.</p>
+    <a href="{% url 'admin:account_main' %}?year={{ year }}" class="btn btn-secondary">돌아가기</a>
+    {% endif %}
+</div>
+
+<script>
+function updateYear(year) {
+    window.location.href = '{% url "admin:budget_edit" %}?year=' + year;
+}
+
+function formatNumber(input) {
+    // 커서 위치 저장
+    var cursorPos = input.selectionStart;
+    var oldLength = input.value.length;
+
+    // 숫자만 추출
+    var val = input.value.replace(/[^\d]/g, '');
+
+    // 3자리마다 콤마 추가
+    if (val) {
+        input.value = parseInt(val).toLocaleString();
+    } else {
+        input.value = '';
+    }
+
+    // 커서 위치 조정
+    var newLength = input.value.length;
+    var posDiff = newLength - oldLength;
+    input.setSelectionRange(cursorPos + posDiff, cursorPos + posDiff);
+
+    updateTotal();
+}
+
+function updateTotal() {
+    var total = 0;
+    var inputs = document.querySelectorAll('.amount-input');
+    inputs.forEach(function(input) {
+        var val = input.value.replace(/,/g, '');
+        var num = parseInt(val) || 0;
+        total += num;
+    });
+    document.getElementById('total-amount').textContent = total.toLocaleString();
+}
+</script>
+{% endblock %}

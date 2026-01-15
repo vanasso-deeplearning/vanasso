@@ -180,6 +180,7 @@
             </div>
             <div class="info-text">컬럼: 구분(대분류), 구분(중분류), 구분(소분류), 계정명, 계정명2, 연간예산액</div>
             <button type="submit" class="btn btn-primary">예산 업로드</button>
+            <a href="{% url 'admin:budget_edit' %}?year={{ selected_year }}" class="btn btn-secondary">예산 일괄 수정/편집</a>
         </form>
     </div>
 

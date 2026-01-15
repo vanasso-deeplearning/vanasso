@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
-from django.urls import path
+from django.urls import path, reverse
 from django.shortcuts import redirect
 from django.contrib import messages
 from django.db import transaction
@@ -80,6 +80,8 @@ class AccountAdmin(admin.ModelAdmin):
         custom_urls = [
             path('main/', self.admin_site.admin_view(self.account_main_view), name='account_main'),
             path('upload/', self.admin_site.admin_view(self.upload_account), name='account_upload'),
+            path('budget-edit/', self.admin_site.admin_view(self.budget_edit_view), name='budget_edit'),
+            path('budget-edit/save/', self.admin_site.admin_view(self.budget_edit_save), name='budget_edit_save'),
         ]
         return custom_urls + urls
 
@@ -290,6 +292,75 @@ class AccountAdmin(admin.ModelAdmin):
         messages.success(request, msg)
         return redirect(f"{request.path}?year={fiscal_year}")
 
+    def budget_edit_view(self, request):
+        """예산 일괄 수정/편집 화면"""
+        from datetime import datetime
+
+        # 연도 선택
+        year = request.GET.get('year', datetime.now().year)
+        try:
+            year = int(year)
+        except:
+            year = datetime.now().year
+
+        # 연도 범위
+        year_range = list(range(2024, 2028))
+
+        # 해당 연도 예산 조회
+        budgets = Budget.objects.filter(fiscal_year=year).select_related('account').order_by('account__code')
+
+        # 총 예산액 계산
+        total_budget = sum(b.annual_amount for b in budgets)
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'{year}년 예산 일괄 수정/편집',
+            'opts': self.model._meta,
+            'year': year,
+            'year_range': year_range,
+            'budgets': budgets,
+            'total_budget': total_budget,
+        }
+
+        return TemplateResponse(request, 'admin/budget_edit.html', context)
+
+    def budget_edit_save(self, request):
+        """예산 일괄 저장"""
+        if request.method != 'POST':
+            return redirect('admin:budget_edit')
+
+        year = int(request.POST.get('year', 0))
+        total_count = int(request.POST.get('total_count', 0))
+
+        updated_count = 0
+        for i in range(total_count):
+            budget_id = request.POST.get(f'budget_id_{i}')
+            account_name = request.POST.get(f'account_name_{i}', '').strip()
+            amount_str = request.POST.get(f'amount_{i}', '0').replace(',', '')
+
+            if budget_id:
+                try:
+                    budget = Budget.objects.get(pk=budget_id)
+                    amount = Decimal(amount_str) if amount_str else Decimal('0')
+
+                    # 예산 금액 업데이트
+                    if budget.annual_amount != amount:
+                        budget.annual_amount = amount
+                        budget.save()
+                        updated_count += 1
+
+                    # 계정명 업데이트
+                    if budget.account.account_name != account_name:
+                        budget.account.account_name = account_name
+                        budget.account.save()
+                        updated_count += 1
+
+                except (Budget.DoesNotExist, ValueError):
+                    pass
+
+        messages.success(request, f'{year}년 예산 저장 완료 ({updated_count}건 수정)')
+        return redirect(f"{reverse('admin:budget_edit')}?year={year}")
+
     def upload_account(self, request):
         """계정과목 엑셀 업로드"""
         context = {
@@ -480,30 +551,119 @@ class TransactionAdmin(admin.ModelAdmin):
         if request.method == 'POST' and request.FILES.get('excel_file'):
             excel_file = request.FILES['excel_file']
 
+            # 엑셀 파일 읽기 (헤더 행 자동 감지)
+            df = None
+            header_row = None
+
             try:
-                df = pd.read_excel(excel_file)
+                # 먼저 헤더 없이 읽어서 구조 파악
+                df_raw = pd.read_excel(excel_file, header=None)
+
+                # 헤더 행 찾기 방법 1: NO 컬럼이 있는 행 (카드사 양식)
+                for i in range(min(10, len(df_raw))):
+                    first_cell = str(df_raw.iloc[i, 0]).strip() if pd.notna(df_raw.iloc[i, 0]) else ''
+                    if first_cell == 'NO':
+                        header_row = i
+                        break
+
+                # 헤더 행 찾기 방법 2: 이용일, 승인금액 등 키워드 (다른 양식)
+                if header_row is None:
+                    header_keywords = ['이용일', '승인금액', '매출금액', '가맹점명', '카드번호']
+                    for i in range(min(10, len(df_raw))):
+                        row_str = ' '.join(str(v) for v in df_raw.iloc[i].tolist() if pd.notna(v))
+                        if any(kw in row_str for kw in header_keywords):
+                            header_row = i
+                            break
+
+                # 헤더 행을 찾았으면 해당 행을 헤더로 다시 읽기
+                excel_file.seek(0)  # 파일 포인터 초기화
+                if header_row is not None:
+                    df = pd.read_excel(excel_file, header=header_row)
+                else:
+                    df = pd.read_excel(excel_file)
+
             except Exception as e:
                 messages.error(request, f'엑셀 파일 읽기 오류: {e}')
+                return TemplateResponse(request, 'admin/card_upload.html', context)
+
+            # 컬럼명 매핑 (다양한 카드사 형식 지원)
+            column_mapping = {
+                'cancel': ['취소\n구분', '취소구분', '취소 구분', '상태', '승인상태'],
+                'cancel_amount': ['취소매출금액', '취소금액'],
+                'date': ['이용일자', '이용일', '거래일자', '거래일', '승인일자', '승인일'],
+                'amount': ['매출금액', '이용금액', '승인금액', '결제금액', '금액'],
+                'description': ['가맹점명', '가맹점', '이용가맹점', '이용처', '사용처'],
+                'card_number': ['카드번호', '카드 번호', '카드NO'],
+            }
+
+            # 실제 컬럼 찾기
+            def find_column(df, candidates):
+                for col in candidates:
+                    if col in df.columns:
+                        return col
+                return None
+
+            cancel_col = find_column(df, column_mapping['cancel'])
+            cancel_amount_col = find_column(df, column_mapping['cancel_amount'])
+            date_col = find_column(df, column_mapping['date'])
+            amount_col = find_column(df, column_mapping['amount'])
+            desc_col = find_column(df, column_mapping['description'])
+            card_col = find_column(df, column_mapping['card_number'])
+
+            # 필수 컬럼 체크
+            if not date_col or not amount_col:
+                col_list = ', '.join(str(c) for c in df.columns.tolist())
+                messages.error(request, f'필수 컬럼을 찾을 수 없습니다. 엑셀 컬럼: [{col_list}]')
                 return TemplateResponse(request, 'admin/card_upload.html', context)
 
             # 카드 내역 파싱
             card_items = []
             for idx, row in df.iterrows():
-                # 취소 건 제외
-                cancel_status = str(row.get('취소\n구분', '')).strip()
-                if cancel_status != '정상':
-                    continue
+                # 취소 건 제외 (취소구분 컬럼이 있는 경우)
+                if cancel_col:
+                    cancel_status = str(row.get(cancel_col, '')).strip()
+                    # '정상', '승인' 등의 값만 허용
+                    if cancel_status and cancel_status not in ['정상', '승인', '']:
+                        continue
 
-                # 이용일자 파싱 (2025.11.02 형식)
-                date_str = str(row.get('이용일자', '')).strip()
-                try:
-                    date_obj = datetime.strptime(date_str, '%Y.%m.%d').date()
-                except:
+                # 취소매출금액으로 취소 여부 판단 (음수이면 취소)
+                if cancel_amount_col:
+                    try:
+                        cancel_val = row.get(cancel_amount_col, 0)
+                        if isinstance(cancel_val, str):
+                            cancel_val = cancel_val.replace(',', '').replace('-', '')
+                        if cancel_val and float(cancel_val) > 0:
+                            continue  # 취소 건은 건너뛰기
+                    except:
+                        pass
+
+                # 이용일자 파싱 (다양한 형식 지원)
+                date_val = row.get(date_col, '')
+                date_obj = None
+
+                # pandas Timestamp인 경우
+                if pd.notna(date_val) and hasattr(date_val, 'date'):
+                    date_obj = date_val.date()
+                else:
+                    date_str = str(date_val).strip()
+                    # 다양한 날짜 형식 시도
+                    for fmt in ['%Y.%m.%d', '%Y-%m-%d', '%Y/%m/%d', '%Y%m%d']:
+                        try:
+                            date_obj = datetime.strptime(date_str, fmt).date()
+                            break
+                        except:
+                            continue
+
+                if not date_obj:
                     continue
 
                 # 매출금액
                 try:
-                    amount = Decimal(str(row.get('매출금액', 0)))
+                    amount_val = row.get(amount_col, 0)
+                    # 쉼표 제거
+                    if isinstance(amount_val, str):
+                        amount_val = amount_val.replace(',', '')
+                    amount = Decimal(str(amount_val))
                 except:
                     amount = Decimal('0')
 
@@ -513,9 +673,9 @@ class TransactionAdmin(admin.ModelAdmin):
                 card_items.append({
                     'index': idx,
                     'date': date_obj,
-                    'description': str(row.get('가맹점명', '')).strip(),
+                    'description': str(row.get(desc_col, '')).strip() if desc_col else '',
                     'amount': amount,
-                    'card_number': str(row.get('카드번호', '')).strip(),
+                    'card_number': str(row.get(card_col, '')).strip() if card_col else '',
                 })
 
             if not card_items:
