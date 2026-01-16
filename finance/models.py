@@ -252,3 +252,42 @@ class CashBook(models.Model):
     def __str__(self):
         category_name = self.category.name if self.category else self.description
         return f"{self.year}.{self.month} [{self.get_book_type_display()}] {category_name}"
+
+
+class MonthlySnapshot(models.Model):
+    """월별 스냅샷 (예산집행내역, 출납장 월 마감용) - JSON 방식으로 모든 데이터 저장"""
+    SNAPSHOT_TYPES = [
+        ('BUDGET', '예산집행'),
+        ('CASHBOOK_BANK', '예금출납장'),
+        ('CASHBOOK_CASH', '현금출납장'),
+        ('CASHBOOK_DEPOSIT', '예수금출납장'),
+    ]
+
+    snapshot_type = models.CharField('스냅샷유형', max_length=20, choices=SNAPSHOT_TYPES)
+    fiscal_year = models.IntegerField('회계연도')
+    month = models.IntegerField('월')
+
+    # 모든 데이터를 JSON으로 저장 (완전한 freezing)
+    # 예산집행: execution_data 전체 구조 (대분류/중분류/항목별 데이터, 소계, 합계 등)
+    # 출납장: 수입/지출 항목 리스트, 전월이월, 차월이월, 합계 등
+    snapshot_data = models.JSONField('스냅샷데이터', default=dict)
+
+    # 확정 정보
+    is_confirmed = models.BooleanField('확정여부', default=False)
+    confirmed_at = models.DateTimeField('확정일시', null=True, blank=True)
+    confirmed_by = models.CharField('확정자', max_length=50, blank=True)
+    note = models.TextField('비고', blank=True)
+
+    created_at = models.DateTimeField('생성일시', auto_now_add=True)
+    updated_at = models.DateTimeField('수정일시', auto_now=True)
+
+    class Meta:
+        verbose_name = '월별스냅샷'
+        verbose_name_plural = '월별스냅샷'
+        unique_together = ['snapshot_type', 'fiscal_year', 'month']
+        ordering = ['fiscal_year', 'month', 'snapshot_type']
+
+    def __str__(self):
+        type_display = dict(self.SNAPSHOT_TYPES).get(self.snapshot_type, self.snapshot_type)
+        status = '확정' if self.is_confirmed else '미확정'
+        return f"{self.fiscal_year}년 {self.month}월 {type_display} ({status})"

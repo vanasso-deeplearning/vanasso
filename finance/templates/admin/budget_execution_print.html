@@ -7,7 +7,7 @@
     <style>
         @page {
             size: A4 portrait;
-            margin: 10mm;
+            margin: 5mm 10mm;
         }
         @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -26,7 +26,7 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         .header h1 {
             font-size: 16px;
@@ -64,37 +64,36 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 9px;
+            table-layout: fixed;
         }
         .execution-table th, .execution-table td {
             border: 1px solid #000;
             padding: 3px 4px;
             text-align: center;
+            vertical-align: middle;
         }
         .execution-table th {
             background: #e8e8e8;
             font-weight: bold;
         }
+        /* 컬럼 너비 설정 */
         .execution-table .col-large { width: 50px; }
-        .execution-table .col-medium { width: 70px; text-align: left; }
-        .execution-table .col-item { text-align: left; }
-        .execution-table .col-budget { width: 75px; text-align: right; }
-        .execution-table .col-executed { width: 70px; text-align: right; }
-        .execution-table .col-rate { width: 35px; }
-        .execution-table .col-month { width: 65px; text-align: right; }
-        .execution-table .col-remaining { width: 70px; text-align: right; }
-        .execution-table .col-note { width: 80px; text-align: left; font-size: 8px; }
-        .execution-table .subtotal-row {
-            background: #f5f5f5;
-            font-weight: bold;
+        .execution-table .col-medium { width: 80px; }
+        .execution-table .col-item { width: 120px; text-align: left; padding-left: 4px; }
+        .execution-table .col-budget { width: 80px; text-align: right; padding-right: 4px; }
+        .execution-table .col-exec-amount { width: 80px; text-align: right; padding-right: 4px; }
+        .execution-table .col-exec-rate { width: 40px; }
+        .execution-table .col-month { width: 80px; text-align: right; padding-right: 4px; }
+        .execution-table .col-remaining { width: 80px; text-align: right; padding-right: 4px; }
+        .execution-table .col-note { width: 50px; text-align: left; font-size: 8px; }
+
+        /* 헤더 셀 중앙 정렬 */
+        .execution-table thead th {
+            text-align: center !important;
+            vertical-align: middle !important;
         }
-        .execution-table .large-total-row {
-            background: #e8e8e8;
-            font-weight: bold;
-        }
-        .execution-table .total-row {
-            background: #d0d0d0;
-            font-weight: bold;
-        }
+
+        /* 카테고리 셀 스타일 */
         .execution-table .category-cell {
             background: #f8f8f8;
             font-weight: bold;
@@ -107,9 +106,36 @@
             background: #fafafa;
             vertical-align: middle;
         }
+
+        /* 소계 행 */
+        .execution-table .subtotal-row {
+            background: #f0f0f0;
+        }
+        .execution-table .subtotal-row td {
+            font-weight: bold;
+        }
+
+        /* 대분류 계 행 */
+        .execution-table .large-total-row {
+            background: #e0e0e0;
+        }
+        .execution-table .large-total-row td {
+            font-weight: bold;
+        }
+
+        /* 합계 행 */
+        .execution-table .total-row {
+            background: #d0d0d0;
+        }
+        .execution-table .total-row td {
+            font-weight: bold;
+        }
+
+        /* 음수 금액 */
         .execution-table .amount-negative {
             color: #c00;
         }
+
         .no-print {
             margin-top: 15px;
             text-align: center;
@@ -150,7 +176,7 @@
                 <th class="col-large" colspan="2">구 분</th>
                 <th class="col-item">내 역</th>
                 <th class="col-budget">연간 예산</th>
-                <th class="col-executed" colspan="2">집행현황<br>누계 및 예산대비(%)</th>
+                <th class="col-exec-amount" colspan="2">집행현황<br><span style="font-size:8px;">누계 및 예산대비(%)</span></th>
                 <th class="col-month">{{ month }}월 집행액</th>
                 <th class="col-remaining">잔여예산</th>
                 <th class="col-note">비 고</th>
@@ -169,9 +195,9 @@
                         {% endif %}
                         <td class="col-item">{{ item.display_name }}</td>
                         <td class="col-budget">{{ item.annual_budget|floatformat:0|intcomma }}</td>
-                        <td class="col-executed">{% if item.cumulative %}{{ item.cumulative|floatformat:0|intcomma }}{% else %}-{% endif %}</td>
-                        <td class="col-rate">{{ item.exec_rate|floatformat:0 }}%</td>
-                        <td class="col-month">{% if item.monthly %}{{ item.monthly|floatformat:0|intcomma }}{% else %}-{% endif %}</td>
+                        <td class="col-exec-amount">{% if item.cumulative %}{{ item.cumulative|floatformat:0|intcomma }}{% else %}0{% endif %}</td>
+                        <td class="col-exec-rate">{{ item.exec_rate|floatformat:0 }}%</td>
+                        <td class="col-month">{% if item.monthly %}{{ item.monthly|floatformat:0|intcomma }}{% else %}0{% endif %}</td>
                         <td class="col-remaining {% if item.remaining < 0 %}amount-negative{% endif %}">{{ item.remaining|floatformat:0|intcomma }}</td>
                         <td class="col-note">{{ item.note }}</td>
                     </tr>
@@ -181,9 +207,9 @@
                     <tr class="subtotal-row">
                         <td class="col-item">소 계</td>
                         <td class="col-budget">{{ med_data.subtotal_budget|floatformat:0|intcomma }}</td>
-                        <td class="col-executed">{{ med_data.subtotal_executed|floatformat:0|intcomma }}</td>
-                        <td class="col-rate">{{ med_data.subtotal_rate|floatformat:0 }}%</td>
-                        <td class="col-month">{% if med_data.subtotal_month %}{{ med_data.subtotal_month|floatformat:0|intcomma }}{% else %}-{% endif %}</td>
+                        <td class="col-exec-amount">{{ med_data.subtotal_executed|floatformat:0|intcomma }}</td>
+                        <td class="col-exec-rate">{{ med_data.subtotal_rate|floatformat:0 }}%</td>
+                        <td class="col-month">{% if med_data.subtotal_month %}{{ med_data.subtotal_month|floatformat:0|intcomma }}{% else %}0{% endif %}</td>
                         <td class="col-remaining {% if med_data.subtotal_remaining < 0 %}amount-negative{% endif %}">{{ med_data.subtotal_remaining|floatformat:0|intcomma }}</td>
                         <td class="col-note"></td>
                     </tr>
@@ -193,9 +219,9 @@
                 <tr class="large-total-row">
                     <td colspan="3" style="text-align: center;">{{ large_cat }} 계</td>
                     <td class="col-budget">{{ large_data.total_budget|floatformat:0|intcomma }}</td>
-                    <td class="col-executed">{{ large_data.total_executed|floatformat:0|intcomma }}</td>
-                    <td class="col-rate">{{ large_data.total_rate|floatformat:0 }}%</td>
-                    <td class="col-month">{% if large_data.total_month %}{{ large_data.total_month|floatformat:0|intcomma }}{% else %}-{% endif %}</td>
+                    <td class="col-exec-amount">{{ large_data.total_executed|floatformat:0|intcomma }}</td>
+                    <td class="col-exec-rate">{{ large_data.total_rate|floatformat:0 }}%</td>
+                    <td class="col-month">{% if large_data.total_month %}{{ large_data.total_month|floatformat:0|intcomma }}{% else %}0{% endif %}</td>
                     <td class="col-remaining {% if large_data.total_remaining < 0 %}amount-negative{% endif %}">{{ large_data.total_remaining|floatformat:0|intcomma }}</td>
                     <td class="col-note"></td>
                 </tr>
@@ -210,9 +236,9 @@
             <tr class="total-row">
                 <td colspan="3" style="text-align: center;">합 계</td>
                 <td class="col-budget">{{ grand_total_budget|floatformat:0|intcomma }}</td>
-                <td class="col-executed">{{ grand_total_executed|floatformat:0|intcomma }}</td>
-                <td class="col-rate">{{ grand_total_rate|floatformat:0 }}%</td>
-                <td class="col-month">{% if grand_total_month %}{{ grand_total_month|floatformat:0|intcomma }}{% else %}-{% endif %}</td>
+                <td class="col-exec-amount">{{ grand_total_executed|floatformat:0|intcomma }}</td>
+                <td class="col-exec-rate">{{ grand_total_rate|floatformat:0 }}%</td>
+                <td class="col-month">{% if grand_total_month %}{{ grand_total_month|floatformat:0|intcomma }}{% else %}0{% endif %}</td>
                 <td class="col-remaining {% if grand_total_remaining < 0 %}amount-negative{% endif %}">{{ grand_total_remaining|floatformat:0|intcomma }}</td>
                 <td class="col-note"></td>
             </tr>

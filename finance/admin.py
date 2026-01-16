@@ -11,7 +11,7 @@ from decimal import Decimal
 import pandas as pd
 import json
 
-from .models import Account, Member, Budget, FixedAsset, Transaction, Settlement, CashBook, CashBookCategory, BankAccount
+from .models import Account, Member, Budget, FixedAsset, Transaction, Settlement, CashBook, CashBookCategory, BankAccount, MonthlySnapshot
 
 
 # 사용자 Admin 커스터마이징 (스태프 권한 추가 화면에 포함)
@@ -782,13 +782,19 @@ class CashBookAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path('monthly-report/', self.admin_site.admin_view(self.monthly_report_main), name='monthly_report'),
+            path('cashbook-combined/<int:year>/<int:month>/', self.admin_site.admin_view(self.cashbook_combined_view), name='cashbook_combined'),
             path('cashbook/<str:book_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.cashbook_view), name='cashbook_view'),
             path('cashbook/save/', self.admin_site.admin_view(self.cashbook_save), name='cashbook_save'),
+            path('cashbook-combined/save/', self.admin_site.admin_view(self.cashbook_combined_save), name='cashbook_combined_save'),
             path('cashbook/pdf/<str:book_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.cashbook_pdf), name='cashbook_pdf'),
             path('deposit-ledger/<int:year>/<int:month>/', self.admin_site.admin_view(self.deposit_ledger_view), name='deposit_ledger'),
             path('deposit-ledger/save/', self.admin_site.admin_view(self.deposit_ledger_save), name='deposit_ledger_save'),
             path('budget-execution/<int:year>/<int:month>/', self.admin_site.admin_view(self.budget_execution_view), name='budget_execution'),
             path('budget-execution/print/<int:year>/<int:month>/', self.admin_site.admin_view(self.budget_execution_print), name='budget_execution_print'),
+            # 스냅샷 확정
+            path('snapshot/confirm/cashbook/', self.admin_site.admin_view(self.snapshot_confirm_cashbook), name='snapshot_confirm_cashbook'),
+            path('snapshot/confirm/budget/', self.admin_site.admin_view(self.snapshot_confirm_budget), name='snapshot_confirm_budget'),
+            path('snapshot/cancel/<str:snapshot_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.snapshot_cancel), name='snapshot_cancel'),
         ]
         return custom_urls + urls
 
@@ -821,6 +827,133 @@ class CashBookAdmin(admin.ModelAdmin):
         }
 
         return TemplateResponse(request, 'admin/monthly_report_main.html', context)
+
+    def cashbook_combined_view(self, request, year, month):
+        """예금/현금출납장 통합 화면"""
+        from datetime import date
+        from calendar import monthrange
+
+        _, last_day = monthrange(year, month)
+
+        # 공통 함수: book_type별 데이터 준비
+        def get_cashbook_data(book_type):
+            # 수입 과목
+            income_categories = CashBookCategory.objects.filter(
+                book_type=book_type, entry_type='INCOME', is_active=True
+            ).order_by('name')
+
+            # 지출 과목: 계정과목 + 출납장과목
+            expense_accounts = list(Account.objects.filter(
+                fiscal_year=year,
+                account_type__in=['EXPENSE', 'LIABILITY', 'EQUITY'],
+                is_active=True
+            ).order_by('code'))
+
+            if not expense_accounts:
+                latest_year = Account.objects.filter(account_type__in=['EXPENSE', 'LIABILITY', 'EQUITY']).order_by('-fiscal_year').values_list('fiscal_year', flat=True).first()
+                if latest_year:
+                    expense_accounts = list(Account.objects.filter(
+                        fiscal_year=latest_year,
+                        account_type__in=['EXPENSE', 'LIABILITY', 'EQUITY'],
+                        is_active=True
+                    ).order_by('code'))
+
+            expense_categories = list(CashBookCategory.objects.filter(
+                book_type=book_type, entry_type='EXPENSE', is_active=True
+            ).order_by('name'))
+
+            expense_items = []
+            for acc in expense_accounts:
+                expense_items.append({'value': f"account:{acc.id}", 'display_name': acc.account_name})
+            for cat in expense_categories:
+                expense_items.append({'value': f"category:{cat.id}", 'display_name': cat.name})
+
+            # 수입 데이터
+            income_entries = list(CashBook.objects.filter(
+                book_type=book_type, year=year, month=month, entry_type='INCOME'
+            ).order_by('order').values('id', 'date', 'category_id', 'description', 'amount', 'bank_account_id', 'note', 'order'))
+
+            # 지출 데이터
+            expense_entries_raw = list(CashBook.objects.filter(
+                book_type=book_type, year=year, month=month, entry_type='EXPENSE'
+            ).order_by('order').values('id', 'date', 'account_id', 'category_id', 'description', 'amount', 'bank_account_id', 'note', 'order'))
+
+            expense_entries = []
+            for entry in expense_entries_raw:
+                if entry['account_id']:
+                    entry['selected_value'] = f"account:{entry['account_id']}"
+                elif entry['category_id']:
+                    entry['selected_value'] = f"category:{entry['category_id']}"
+                else:
+                    entry['selected_value'] = ''
+                expense_entries.append(entry)
+
+            # 빈 행 추가 (예금: 20/20, 현금: 5/20)
+            income_row_count = 20 if book_type == 'BANK' else 5
+            while len(income_entries) < income_row_count:
+                income_entries.append({'id': None, 'date': None, 'category_id': None, 'description': '', 'amount': 0, 'bank_account_id': None, 'note': '', 'order': len(income_entries)})
+            while len(expense_entries) < 20:
+                expense_entries.append({'id': None, 'date': None, 'account_id': None, 'category_id': None, 'selected_value': '', 'description': '', 'amount': 0, 'bank_account_id': None, 'note': '', 'order': len(expense_entries)})
+
+            income_total = sum(e['amount'] for e in income_entries if e['amount'])
+            expense_total = sum(e['amount'] for e in expense_entries if e['amount'])
+
+            return {
+                'income_categories': income_categories,
+                'expense_items': expense_items,
+                'income_entries': income_entries,
+                'expense_entries': expense_entries,
+                'income_total': income_total,
+                'expense_total': expense_total,
+            }
+
+        # 예금출납장 데이터
+        bank_data = get_cashbook_data('BANK')
+        # 현금출납장 데이터
+        cash_data = get_cashbook_data('CASH')
+
+        year_range = list(range(2024, 2028))
+        month_range = list(range(1, 13))
+
+        # 확정 상태 조회
+        bank_snapshot = MonthlySnapshot.objects.filter(
+            snapshot_type='CASHBOOK_BANK', fiscal_year=year, month=month
+        ).first()
+        cash_snapshot = MonthlySnapshot.objects.filter(
+            snapshot_type='CASHBOOK_CASH', fiscal_year=year, month=month
+        ).first()
+        is_confirmed = (bank_snapshot and bank_snapshot.is_confirmed) or (cash_snapshot and cash_snapshot.is_confirmed)
+        confirmed_at = bank_snapshot.confirmed_at if bank_snapshot and bank_snapshot.is_confirmed else None
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'예금/현금출납장 ({year}. {month}월)',
+            'opts': self.model._meta,
+            'year': year,
+            'month': month,
+            'last_day': last_day,
+            'year_range': year_range,
+            'month_range': month_range,
+            # 예금출납장
+            'bank_income_categories': bank_data['income_categories'],
+            'bank_expense_items': bank_data['expense_items'],
+            'bank_income_entries': bank_data['income_entries'],
+            'bank_expense_entries': bank_data['expense_entries'],
+            'bank_income_total': bank_data['income_total'],
+            'bank_expense_total': bank_data['expense_total'],
+            # 현금출납장
+            'cash_income_categories': cash_data['income_categories'],
+            'cash_expense_items': cash_data['expense_items'],
+            'cash_income_entries': cash_data['income_entries'],
+            'cash_expense_entries': cash_data['expense_entries'],
+            'cash_income_total': cash_data['income_total'],
+            'cash_expense_total': cash_data['expense_total'],
+            # 확정 상태
+            'is_confirmed': is_confirmed,
+            'confirmed_at': confirmed_at,
+        }
+
+        return TemplateResponse(request, 'admin/cashbook_combined.html', context)
 
     def cashbook_view(self, request, book_type, year, month):
         """출납장 조회/편집 화면"""
@@ -1076,7 +1209,143 @@ class CashBookAdmin(admin.ModelAdmin):
             msg += f' - 거래내역 {transaction_saved}건 동시 저장'
         messages.success(request, msg)
 
-        return redirect('admin:cashbook_view', book_type=book_type, year=year, month=month)
+        # 통합 화면으로 돌아가기
+        return redirect('admin:cashbook_combined', year=year, month=month)
+
+    def cashbook_combined_save(self, request):
+        """예금/현금출납장 통합 저장"""
+        if request.method != 'POST':
+            return redirect('admin:monthly_report')
+
+        year = int(request.POST.get('year'))
+        month = int(request.POST.get('month'))
+
+        total_saved = 0
+        total_transactions = 0
+
+        # 예금(BANK)과 현금(CASH) 두 타입을 순서대로 처리
+        for book_type, prefix in [('BANK', 'bank'), ('CASH', 'cash')]:
+            # 기존 데이터 삭제 (연결된 Transaction도 함께 삭제)
+            old_cashbooks = CashBook.objects.filter(book_type=book_type, year=year, month=month)
+            linked_transaction_ids = list(old_cashbooks.exclude(
+                linked_transaction__isnull=True
+            ).values_list('linked_transaction_id', flat=True))
+            old_cashbooks.delete()
+            if linked_transaction_ids:
+                Transaction.objects.filter(id__in=linked_transaction_ids).delete()
+
+            saved_count = 0
+
+            # 수입 내역 저장 (CashBookCategory 사용)
+            idx = 0
+            while True:
+                day = request.POST.get(f'{prefix}_income_day_{idx}')
+                if day is None:
+                    break
+
+                category_id = request.POST.get(f'{prefix}_income_category_{idx}', '').strip()
+                amount_str = request.POST.get(f'{prefix}_income_amount_{idx}', '0').replace(',', '')
+                note = request.POST.get(f'{prefix}_income_note_{idx}', '').strip()
+
+                if day and category_id:
+                    try:
+                        from datetime import date
+                        entry_date = date(year, month, int(day))
+                        amount = Decimal(amount_str) if amount_str else Decimal('0')
+
+                        category = CashBookCategory.objects.get(pk=category_id)
+
+                        CashBook.objects.create(
+                            book_type=book_type,
+                            year=year,
+                            month=month,
+                            entry_type='INCOME',
+                            date=entry_date,
+                            category=category,
+                            amount=amount,
+                            note=note,
+                            order=saved_count,
+                        )
+                        saved_count += 1
+                    except Exception as e:
+                        pass
+
+                idx += 1
+
+            # 지출 내역 저장 (account:123 또는 category:456 형식)
+            idx = 0
+            transaction_saved = 0
+            while True:
+                day = request.POST.get(f'{prefix}_expense_day_{idx}')
+                if day is None:
+                    break
+
+                item_value = request.POST.get(f'{prefix}_expense_item_{idx}', '').strip()
+                amount_str = request.POST.get(f'{prefix}_expense_amount_{idx}', '0').replace(',', '')
+                note = request.POST.get(f'{prefix}_expense_note_{idx}', '').strip()
+
+                if day and item_value:
+                    try:
+                        from datetime import date
+                        entry_date = date(year, month, int(day))
+                        amount = Decimal(amount_str) if amount_str else Decimal('0')
+
+                        # item_value 파싱 (account:123 또는 category:456)
+                        item_type, item_id = item_value.split(':')
+                        account = None
+                        category = None
+                        display_name = ''
+
+                        if item_type == 'account':
+                            account = Account.objects.get(pk=int(item_id))
+                            display_name = account.account_name
+                        elif item_type == 'category':
+                            category = CashBookCategory.objects.get(pk=int(item_id))
+                            display_name = category.name
+
+                        # 예금출납장 + 계정과목 선택 시 Transaction 테이블에도 저장
+                        linked_trans = None
+                        if book_type == 'BANK' and account and amount > 0:
+                            linked_trans = Transaction.objects.create(
+                                date=entry_date,
+                                transaction_type='EXPENSE',
+                                account=account,
+                                description=display_name + (f' ({note})' if note else ''),
+                                amount=amount,
+                                payment_method='BANK',
+                                status='APPROVED',
+                            )
+                            transaction_saved += 1
+
+                        CashBook.objects.create(
+                            book_type=book_type,
+                            year=year,
+                            month=month,
+                            entry_type='EXPENSE',
+                            date=entry_date,
+                            account=account,
+                            category=category,
+                            description=display_name,
+                            amount=amount,
+                            note=note,
+                            order=saved_count,
+                            linked_transaction=linked_trans,
+                        )
+                        saved_count += 1
+                    except Exception as e:
+                        pass
+
+                idx += 1
+
+            total_saved += saved_count
+            total_transactions += transaction_saved
+
+        msg = f'{year}년 {month}월 예금/현금출납장 저장 완료 ({total_saved}건)'
+        if total_transactions > 0:
+            msg += f' - 거래내역 {total_transactions}건 동시 저장'
+        messages.success(request, msg)
+
+        return redirect('admin:cashbook_combined', year=year, month=month)
 
     def cashbook_pdf(self, request, book_type, year, month):
         """출납장 PDF 출력"""
@@ -1343,6 +1612,13 @@ class CashBookAdmin(admin.ModelAdmin):
         year_range = list(range(2024, 2028))
         month_range = list(range(1, 13))
 
+        # 확정 상태 조회
+        budget_snapshot = MonthlySnapshot.objects.filter(
+            snapshot_type='BUDGET', fiscal_year=year, month=month
+        ).first()
+        is_confirmed = budget_snapshot and budget_snapshot.is_confirmed
+        confirmed_at = budget_snapshot.confirmed_at if is_confirmed else None
+
         context = {
             **self.admin_site.each_context(request),
             'title': f'{year}년 {month}월 예산집행 내역',
@@ -1351,6 +1627,8 @@ class CashBookAdmin(admin.ModelAdmin):
             'month': month,
             'year_range': year_range,
             'month_range': month_range,
+            'is_confirmed': is_confirmed,
+            'confirmed_at': confirmed_at,
             **data,
         }
 
@@ -1368,3 +1646,194 @@ class CashBookAdmin(admin.ModelAdmin):
         }
 
         return TemplateResponse(request, 'admin/budget_execution_print.html', context)
+
+    def snapshot_confirm_cashbook(self, request):
+        """예금/현금출납장 스냅샷 확정"""
+        from django.utils import timezone
+
+        if request.method != 'POST':
+            return redirect('admin:monthly_report')
+
+        year = int(request.POST.get('year'))
+        month = int(request.POST.get('month'))
+
+        # 예금출납장과 현금출납장 둘 다 확정
+        for book_type, snapshot_type in [('BANK', 'CASHBOOK_BANK'), ('CASH', 'CASHBOOK_CASH')]:
+            # 현재 데이터 조회
+            income_entries = list(CashBook.objects.filter(
+                book_type=book_type, year=year, month=month, entry_type='INCOME'
+            ).select_related('category', 'bank_account').order_by('order').values(
+                'id', 'date', 'category__name', 'description', 'amount', 'bank_account__bank_name', 'note', 'order'
+            ))
+
+            expense_entries = list(CashBook.objects.filter(
+                book_type=book_type, year=year, month=month, entry_type='EXPENSE'
+            ).select_related('account', 'category', 'bank_account').order_by('order').values(
+                'id', 'date', 'account__account_name', 'category__name', 'description', 'amount', 'bank_account__bank_name', 'note', 'order'
+            ))
+
+            # 합계 계산
+            income_total = sum(e['amount'] or 0 for e in income_entries)
+            expense_total = sum(e['amount'] or 0 for e in expense_entries)
+
+            # 전월이월 계산 (직전 월 스냅샷에서 차월이월 가져오기)
+            prev_balance = Decimal('0')
+            if month == 1:
+                prev_snapshot = MonthlySnapshot.objects.filter(
+                    snapshot_type=snapshot_type, fiscal_year=year-1, month=12, is_confirmed=True
+                ).first()
+            else:
+                prev_snapshot = MonthlySnapshot.objects.filter(
+                    snapshot_type=snapshot_type, fiscal_year=year, month=month-1, is_confirmed=True
+                ).first()
+            if prev_snapshot and prev_snapshot.snapshot_data.get('next_balance'):
+                prev_balance = Decimal(str(prev_snapshot.snapshot_data['next_balance']))
+
+            # 차월이월 계산
+            next_balance = prev_balance + income_total - expense_total
+
+            # 날짜 직렬화를 위한 변환
+            def serialize_entries(entries):
+                result = []
+                for e in entries:
+                    item = dict(e)
+                    if item.get('date'):
+                        item['date'] = item['date'].isoformat()
+                    # Decimal을 float로 변환
+                    if item.get('amount'):
+                        item['amount'] = float(item['amount'])
+                    result.append(item)
+                return result
+
+            # 스냅샷 데이터 구성
+            snapshot_data = {
+                'income_entries': serialize_entries(income_entries),
+                'expense_entries': serialize_entries(expense_entries),
+                'income_total': float(income_total),
+                'expense_total': float(expense_total),
+                'prev_balance': float(prev_balance),
+                'next_balance': float(next_balance),
+            }
+
+            # 스냅샷 생성 또는 업데이트
+            snapshot, created = MonthlySnapshot.objects.update_or_create(
+                snapshot_type=snapshot_type,
+                fiscal_year=year,
+                month=month,
+                defaults={
+                    'snapshot_data': snapshot_data,
+                    'is_confirmed': True,
+                    'confirmed_at': timezone.now(),
+                    'confirmed_by': request.user.username if request.user.is_authenticated else '',
+                }
+            )
+
+        messages.success(request, f'{year}년 {month}월 예금/현금출납장이 확정되었습니다.')
+        return redirect('admin:cashbook_combined', year=year, month=month)
+
+    def snapshot_confirm_budget(self, request):
+        """예산집행내역 스냅샷 확정"""
+        from django.utils import timezone
+
+        if request.method != 'POST':
+            return redirect('admin:monthly_report')
+
+        year = int(request.POST.get('year'))
+        month = int(request.POST.get('month'))
+
+        # 예산집행 데이터 조회
+        data = self._get_budget_execution_data(year, month)
+
+        # execution_data를 JSON 직렬화 가능한 형태로 변환
+        def serialize_execution_data(execution_data):
+            result = {}
+            for large_cat, large_data in execution_data.items():
+                result[large_cat] = {
+                    'medium_categories': {},
+                    'total_budget': float(large_data['total_budget']),
+                    'total_executed': float(large_data['total_executed']),
+                    'total_month': float(large_data['total_month']),
+                    'total_remaining': float(large_data['total_remaining']),
+                    'total_rate': float(large_data['total_rate']),
+                    'row_count': large_data['row_count'],
+                }
+                for med_cat, med_data in large_data['medium_categories'].items():
+                    items = []
+                    for item in med_data['items']:
+                        items.append({
+                            'account_id': item['account'].id,
+                            'account_code': item['account'].code,
+                            'display_name': item['display_name'],
+                            'annual_budget': float(item['annual_budget']),
+                            'cumulative': float(item['cumulative']),
+                            'exec_rate': float(item['exec_rate']),
+                            'monthly': float(item['monthly']),
+                            'remaining': float(item['remaining']),
+                            'note': item['note'],
+                        })
+                    result[large_cat]['medium_categories'][med_cat] = {
+                        'items': items,
+                        'subtotal_budget': float(med_data['subtotal_budget']),
+                        'subtotal_executed': float(med_data['subtotal_executed']),
+                        'subtotal_month': float(med_data['subtotal_month']),
+                        'subtotal_remaining': float(med_data['subtotal_remaining']),
+                        'subtotal_rate': float(med_data['subtotal_rate']),
+                        'row_count': med_data['row_count'],
+                        'show_subtotal': med_data['show_subtotal'],
+                    }
+            return result
+
+        # 스냅샷 데이터 구성
+        snapshot_data = {
+            'execution_data': serialize_execution_data(data['execution_data']),
+            'grand_total_budget': float(data['grand_total_budget']),
+            'grand_total_executed': float(data['grand_total_executed']),
+            'grand_total_month': float(data['grand_total_month']),
+            'grand_total_remaining': float(data['grand_total_remaining']),
+            'grand_total_rate': float(data['grand_total_rate']),
+        }
+
+        # 스냅샷 생성 또는 업데이트
+        snapshot, created = MonthlySnapshot.objects.update_or_create(
+            snapshot_type='BUDGET',
+            fiscal_year=year,
+            month=month,
+            defaults={
+                'snapshot_data': snapshot_data,
+                'is_confirmed': True,
+                'confirmed_at': timezone.now(),
+                'confirmed_by': request.user.username if request.user.is_authenticated else '',
+            }
+        )
+
+        messages.success(request, f'{year}년 {month}월 예산집행내역이 확정되었습니다.')
+        return redirect('admin:budget_execution', year=year, month=month)
+
+    def snapshot_cancel(self, request, snapshot_type, year, month):
+        """스냅샷 확정 해제"""
+        if request.method != 'POST':
+            return redirect('admin:monthly_report')
+
+        snapshot = MonthlySnapshot.objects.filter(
+            snapshot_type=snapshot_type, fiscal_year=year, month=month
+        ).first()
+
+        if snapshot:
+            snapshot.is_confirmed = False
+            snapshot.confirmed_at = None
+            snapshot.confirmed_by = ''
+            snapshot.save()
+
+            type_names = {
+                'BUDGET': '예산집행내역',
+                'CASHBOOK_BANK': '예금출납장',
+                'CASHBOOK_CASH': '현금출납장',
+            }
+            type_name = type_names.get(snapshot_type, snapshot_type)
+            messages.success(request, f'{year}년 {month}월 {type_name} 확정이 해제되었습니다.')
+
+        # 리다이렉트
+        if snapshot_type == 'BUDGET':
+            return redirect('admin:budget_execution', year=year, month=month)
+        else:
+            return redirect('admin:cashbook_combined', year=year, month=month)

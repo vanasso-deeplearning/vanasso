@@ -1,0 +1,274 @@
+{% extends "admin/base_site.html" %}
+{% load i18n humanize static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+    .cashbook-table .select2-container { width: 100% !important; }
+    .cashbook-table .select2-container--default .select2-selection--single {
+        border: none; background: transparent; height: 24px; min-height: 24px;
+    }
+    .cashbook-table .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: 24px; font-size: 11px; padding-left: 2px;
+    }
+    .cashbook-table .select2-container--default .select2-selection--single .select2-selection__arrow { height: 22px; }
+    .select2-results__option { font-size: 12px; padding: 4px 8px; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:monthly_report' %}?year={{ year }}&month={{ month }}">월간보고서</a></li>
+        <li class="breadcrumb-item active">예금/현금출납장</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .combined-container { max-width: 1800px; }
+    .combined-header { text-align: center; margin-bottom: 15px; }
+    .combined-header h1 { font-size: 22px; margin-bottom: 5px; }
+    .top-controls {
+        display: flex; justify-content: center; align-items: center;
+        gap: 15px; margin-bottom: 20px;
+    }
+    .top-controls select { padding: 6px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
+    .top-controls .btn {
+        padding: 6px 15px; font-size: 13px; border: none; border-radius: 4px; cursor: pointer;
+    }
+    .top-controls .btn-go { background: #417690; color: white; }
+    .top-controls .btn-save { background: #28a745; color: white; }
+    .top-controls .btn-confirm { background: #dc3545; color: white; }
+    .top-controls .btn-cancel { background: #6c757d; color: white; }
+    .confirm-status { font-size: 12px; color: #28a745; margin-left: 10px; }
+    .two-column { display: flex; gap: 30px; }
+    .column { flex: 1; min-width: 0; }
+    .column-header { text-align: center; margin-bottom: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; }
+    .column-header h2 { font-size: 18px; text-decoration: underline; margin: 0; }
+    .column-header .btn-print { padding: 4px 12px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; text-decoration: none; }
+    .section-title {
+        font-size: 13px; font-weight: bold; margin: 12px 0 6px 0;
+        display: flex; justify-content: space-between;
+    }
+    .section-title .unit { font-weight: normal; color: #888; }
+    .cashbook-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
+    .cashbook-table th, .cashbook-table td { border: 1px solid #999; padding: 2px 4px; text-align: center; }
+    .cashbook-table th { background: #e8e8e8; font-weight: normal; }
+    .cashbook-table .col-day { width: 35px; }
+    .cashbook-table .col-category { width: 180px; }
+    .cashbook-table .col-amount { width: 80px; text-align: right; }
+    .cashbook-table .col-note { width: 80px; }
+    .cashbook-table input[type="text"] {
+        width: 100%; border: none; background: transparent;
+        padding: 1px 2px; font-size: 11px; box-sizing: border-box;
+    }
+    .cashbook-table select {
+        width: 100%; border: none; background: transparent;
+        padding: 1px; font-size: 10px; box-sizing: border-box;
+    }
+    .cashbook-table input.amount-input { text-align: right; }
+    .cashbook-table .subtotal-row { background: #f5f5f5; font-weight: bold; }
+    .bottom-controls { margin-top: 20px; display: flex; gap: 10px; justify-content: center; }
+    .bottom-controls .btn {
+        padding: 8px 20px; font-size: 13px; border: none;
+        border-radius: 4px; cursor: pointer; text-decoration: none;
+    }
+    .bottom-controls .btn-secondary { background: #6c757d; color: white; }
+</style>
+
+<div class="combined-container">
+    <div class="combined-header">
+        <h1>예금/현금출납장</h1>
+    </div>
+
+    <form method="post" action="{% url 'admin:cashbook_combined_save' %}" id="combined_form">
+        {% csrf_token %}
+        <input type="hidden" name="year" value="{{ year }}">
+        <input type="hidden" name="month" value="{{ month }}">
+
+        <!-- 상단: 연월 선택 + 저장 버튼 -->
+        <div class="top-controls">
+            <select id="select_year">
+                {% for y in year_range %}
+                <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+                {% endfor %}
+            </select>
+            <select id="select_month">
+                {% for m in month_range %}
+                <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}월</option>
+                {% endfor %}
+            </select>
+            <button type="button" class="btn btn-go" onclick="goToDate()">조회</button>
+            <button type="submit" class="btn btn-save">저장</button>
+            {% if is_confirmed %}
+            <span class="confirm-status">✓ 확정됨 ({{ confirmed_at|date:"Y-m-d H:i" }})</span>
+            <button type="button" class="btn btn-cancel" onclick="cancelConfirm()">확정해제</button>
+            {% else %}
+            <button type="button" class="btn btn-confirm" onclick="confirmSnapshot()">확정</button>
+            {% endif %}
+        </div>
+
+        <div class="two-column">
+            <!-- 왼쪽: 예금출납장 -->
+            <div class="column">
+                <div class="column-header">
+                    <h2>예 금 출 납 장</h2>
+                    <a href="{% url 'admin:cashbook_pdf' book_type='BANK' year=year month=month %}" class="btn-print" target="_blank">출력</a>
+                </div>
+
+                <div class="section-title"><span>1. 수입내역</span><span class="unit">(단위:원)</span></div>
+                <table class="cashbook-table">
+                    <thead><tr><th class="col-day">일자</th><th class="col-category">내용</th><th class="col-amount">금액</th><th class="col-note">비고</th></tr></thead>
+                    <tbody>
+                        {% for entry in bank_income_entries %}
+                        <tr>
+                            <td><input type="text" name="bank_income_day_{{ forloop.counter0 }}" value="{% if entry.date %}{{ entry.date.day }}{% endif %}" maxlength="2" style="text-align:center;"></td>
+                            <td><select name="bank_income_category_{{ forloop.counter0 }}"><option value="">선택</option>{% for cat in bank_income_categories %}<option value="{{ cat.id }}" {% if entry.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>{% endfor %}</select></td>
+                            <td><input type="text" name="bank_income_amount_{{ forloop.counter0 }}" class="amount-input bank-amount" value="{% if entry.amount %}{{ entry.amount|floatformat:0|intcomma }}{% endif %}"></td>
+                            <td><input type="text" name="bank_income_note_{{ forloop.counter0 }}" value="{{ entry.note }}"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot><tr class="subtotal-row"><td colspan="2">소계</td><td id="bank_income_total">{{ bank_income_total|floatformat:0|intcomma }}</td><td></td></tr></tfoot>
+                </table>
+
+                <div class="section-title"><span>2. 지출내역</span><span class="unit">(단위:원)</span></div>
+                <table class="cashbook-table">
+                    <thead><tr><th class="col-day">일자</th><th class="col-category">내용</th><th class="col-amount">금액</th><th class="col-note">비고</th></tr></thead>
+                    <tbody>
+                        {% for entry in bank_expense_entries %}
+                        <tr>
+                            <td><input type="text" name="bank_expense_day_{{ forloop.counter0 }}" value="{% if entry.date %}{{ entry.date.day }}{% endif %}" maxlength="2" style="text-align:center;"></td>
+                            <td><select name="bank_expense_item_{{ forloop.counter0 }}" class="expense-account-select"><option value="">선택</option>{% for item in bank_expense_items %}<option value="{{ item.value }}" {% if entry.selected_value == item.value %}selected{% endif %}>{{ item.display_name }}</option>{% endfor %}</select></td>
+                            <td><input type="text" name="bank_expense_amount_{{ forloop.counter0 }}" class="amount-input bank-amount" value="{% if entry.amount %}{{ entry.amount|floatformat:0|intcomma }}{% endif %}"></td>
+                            <td><input type="text" name="bank_expense_note_{{ forloop.counter0 }}" value="{{ entry.note }}"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot><tr class="subtotal-row"><td colspan="2">소계</td><td id="bank_expense_total">{{ bank_expense_total|floatformat:0|intcomma }}</td><td></td></tr></tfoot>
+                </table>
+            </div>
+
+            <!-- 오른쪽: 현금출납장 -->
+            <div class="column">
+                <div class="column-header">
+                    <h2>현 금 출 납 장</h2>
+                    <a href="{% url 'admin:cashbook_pdf' book_type='CASH' year=year month=month %}" class="btn-print" target="_blank">출력</a>
+                </div>
+
+                <div class="section-title"><span>1. 수입내역</span><span class="unit">(단위:원)</span></div>
+                <table class="cashbook-table">
+                    <thead><tr><th class="col-day">일자</th><th class="col-category">내용</th><th class="col-amount">금액</th><th class="col-note">비고</th></tr></thead>
+                    <tbody>
+                        {% for entry in cash_income_entries %}
+                        <tr>
+                            <td><input type="text" name="cash_income_day_{{ forloop.counter0 }}" value="{% if entry.date %}{{ entry.date.day }}{% endif %}" maxlength="2" style="text-align:center;"></td>
+                            <td><select name="cash_income_category_{{ forloop.counter0 }}"><option value="">선택</option>{% for cat in cash_income_categories %}<option value="{{ cat.id }}" {% if entry.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>{% endfor %}</select></td>
+                            <td><input type="text" name="cash_income_amount_{{ forloop.counter0 }}" class="amount-input cash-amount" value="{% if entry.amount %}{{ entry.amount|floatformat:0|intcomma }}{% endif %}"></td>
+                            <td><input type="text" name="cash_income_note_{{ forloop.counter0 }}" value="{{ entry.note }}"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot><tr class="subtotal-row"><td colspan="2">소계</td><td id="cash_income_total">{{ cash_income_total|floatformat:0|intcomma }}</td><td></td></tr></tfoot>
+                </table>
+
+                <div class="section-title"><span>2. 지출내역</span><span class="unit">(단위:원)</span></div>
+                <table class="cashbook-table">
+                    <thead><tr><th class="col-day">일자</th><th class="col-category">내용</th><th class="col-amount">금액</th><th class="col-note">비고</th></tr></thead>
+                    <tbody>
+                        {% for entry in cash_expense_entries %}
+                        <tr>
+                            <td><input type="text" name="cash_expense_day_{{ forloop.counter0 }}" value="{% if entry.date %}{{ entry.date.day }}{% endif %}" maxlength="2" style="text-align:center;"></td>
+                            <td><select name="cash_expense_item_{{ forloop.counter0 }}" class="expense-account-select"><option value="">선택</option>{% for item in cash_expense_items %}<option value="{{ item.value }}" {% if entry.selected_value == item.value %}selected{% endif %}>{{ item.display_name }}</option>{% endfor %}</select></td>
+                            <td><input type="text" name="cash_expense_amount_{{ forloop.counter0 }}" class="amount-input cash-amount" value="{% if entry.amount %}{{ entry.amount|floatformat:0|intcomma }}{% endif %}"></td>
+                            <td><input type="text" name="cash_expense_note_{{ forloop.counter0 }}" value="{{ entry.note }}"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot><tr class="subtotal-row"><td colspan="2">소계</td><td id="cash_expense_total">{{ cash_expense_total|floatformat:0|intcomma }}</td><td></td></tr></tfoot>
+                </table>
+            </div>
+        </div>
+    </form>
+
+    <div class="bottom-controls">
+        <a href="{% url 'admin:monthly_report' %}?year={{ year }}&month={{ month }}" class="btn btn-secondary">목록으로</a>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('input[type="text"]').forEach(function(input) {
+    input.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); }
+    });
+});
+
+document.querySelectorAll('.amount-input').forEach(function(input) {
+    input.addEventListener('blur', function() {
+        var val = this.value.replace(/,/g, '');
+        if (val && !isNaN(val)) { this.value = parseInt(val).toLocaleString(); }
+    });
+    input.addEventListener('focus', function() { this.value = this.value.replace(/,/g, ''); });
+    input.addEventListener('input', function() {
+        updateTotals(this.classList.contains('bank-amount') ? 'bank' : 'cash');
+    });
+});
+
+function updateTotals(type) {
+    var incomeTotal = 0;
+    document.querySelectorAll('input[name^="' + type + '_income_amount_"]').forEach(function(input) {
+        incomeTotal += parseInt(input.value.replace(/,/g, '')) || 0;
+    });
+    document.getElementById(type + '_income_total').textContent = incomeTotal.toLocaleString();
+
+    var expenseTotal = 0;
+    document.querySelectorAll('input[name^="' + type + '_expense_amount_"]').forEach(function(input) {
+        expenseTotal += parseInt(input.value.replace(/,/g, '')) || 0;
+    });
+    document.getElementById(type + '_expense_total').textContent = expenseTotal.toLocaleString();
+}
+
+function goToDate() {
+    var year = document.getElementById('select_year').value;
+    var month = document.getElementById('select_month').value;
+    window.location.href = "{% url 'admin:cashbook_combined' year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
+}
+
+function confirmSnapshot() {
+    if (confirm('{{ year }}년 {{ month }}월 예금/현금출납장을 확정하시겠습니까?\n\n확정 후에는 데이터가 스냅샷으로 저장됩니다.')) {
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{% url "admin:snapshot_confirm_cashbook" %}';
+        form.innerHTML = '{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">';
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function cancelConfirm() {
+    if (confirm('{{ year }}년 {{ month }}월 예금/현금출납장 확정을 해제하시겠습니까?')) {
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{% url "admin:snapshot_cancel" snapshot_type="CASHBOOK_BANK" year=year month=month %}';
+        form.innerHTML = '{% csrf_token %}';
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+jQuery('.expense-account-select').select2({
+    placeholder: '계정과목 검색...', allowClear: true, width: '100%',
+    dropdownParent: jQuery('.combined-container')
+});
+</script>
+{% endblock %}
