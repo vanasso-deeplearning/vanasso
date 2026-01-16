@@ -795,6 +795,10 @@ class CashBookAdmin(admin.ModelAdmin):
             path('snapshot/confirm/cashbook/', self.admin_site.admin_view(self.snapshot_confirm_cashbook), name='snapshot_confirm_cashbook'),
             path('snapshot/confirm/budget/', self.admin_site.admin_view(self.snapshot_confirm_budget), name='snapshot_confirm_budget'),
             path('snapshot/cancel/<str:snapshot_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.snapshot_cancel), name='snapshot_cancel'),
+            # 월간보고서(확정)
+            path('confirmed-report/', self.admin_site.admin_view(self.confirmed_report_main), name='confirmed_report'),
+            path('confirmed-report/cashbook/<str:book_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.confirmed_cashbook_view), name='confirmed_cashbook'),
+            path('confirmed-report/budget/<int:year>/<int:month>/', self.admin_site.admin_view(self.confirmed_budget_view), name='confirmed_budget'),
         ]
         return custom_urls + urls
 
@@ -1837,3 +1841,107 @@ class CashBookAdmin(admin.ModelAdmin):
             return redirect('admin:budget_execution', year=year, month=month)
         else:
             return redirect('admin:cashbook_combined', year=year, month=month)
+
+    def confirmed_report_main(self, request):
+        """월간보고서(확정) 메인 화면"""
+        from datetime import datetime
+        current_month = datetime.now().month
+
+        default_year = 2025
+        selected_year = int(request.GET.get('year', default_year))
+        selected_month = int(request.GET.get('month', current_month))
+
+        years = list(range(2027, 2023, -1))
+        months = list(range(1, 13))
+
+        # 확정된 스냅샷 목록 조회
+        confirmed_snapshots = MonthlySnapshot.objects.filter(
+            is_confirmed=True
+        ).values('snapshot_type', 'fiscal_year', 'month', 'confirmed_at').order_by('-fiscal_year', '-month')
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': '월간보고서(확정)',
+            'opts': self.model._meta,
+            'years': years,
+            'months': months,
+            'selected_year': selected_year,
+            'selected_month': selected_month,
+            'confirmed_snapshots': confirmed_snapshots,
+        }
+
+        return TemplateResponse(request, 'admin/confirmed_report_main.html', context)
+
+    def confirmed_cashbook_view(self, request, book_type, year, month):
+        """확정된 출납장 조회"""
+        snapshot_type = f'CASHBOOK_{book_type}'
+        snapshot = MonthlySnapshot.objects.filter(
+            snapshot_type=snapshot_type, fiscal_year=year, month=month, is_confirmed=True
+        ).first()
+
+        if not snapshot:
+            messages.warning(request, f'{year}년 {month}월 {"예금" if book_type == "BANK" else "현금"}출납장이 확정되지 않았습니다.')
+            return redirect('admin:confirmed_report')
+
+        data = snapshot.snapshot_data
+        book_type_display = '예금출납장' if book_type == 'BANK' else '현금출납장'
+
+        year_range = list(range(2024, 2028))
+        month_range = list(range(1, 13))
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'{book_type_display}(확정) ({year}. {month}월)',
+            'opts': self.model._meta,
+            'book_type': book_type,
+            'book_type_display': book_type_display,
+            'year': year,
+            'month': month,
+            'year_range': year_range,
+            'month_range': month_range,
+            'income_entries': data.get('income_entries', []),
+            'expense_entries': data.get('expense_entries', []),
+            'income_total': data.get('income_total', 0),
+            'expense_total': data.get('expense_total', 0),
+            'prev_balance': data.get('prev_balance', 0),
+            'next_balance': data.get('next_balance', 0),
+            'confirmed_at': snapshot.confirmed_at,
+            'confirmed_by': snapshot.confirmed_by,
+        }
+
+        return TemplateResponse(request, 'admin/confirmed_cashbook.html', context)
+
+    def confirmed_budget_view(self, request, year, month):
+        """확정된 예산집행내역 조회"""
+        snapshot = MonthlySnapshot.objects.filter(
+            snapshot_type='BUDGET', fiscal_year=year, month=month, is_confirmed=True
+        ).first()
+
+        if not snapshot:
+            messages.warning(request, f'{year}년 {month}월 예산집행내역이 확정되지 않았습니다.')
+            return redirect('admin:confirmed_report')
+
+        data = snapshot.snapshot_data
+
+        year_range = list(range(2024, 2028))
+        month_range = list(range(1, 13))
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'{year}년 {month}월 예산집행 내역(확정)',
+            'opts': self.model._meta,
+            'year': year,
+            'month': month,
+            'year_range': year_range,
+            'month_range': month_range,
+            'execution_data': data.get('execution_data', {}),
+            'grand_total_budget': data.get('grand_total_budget', 0),
+            'grand_total_executed': data.get('grand_total_executed', 0),
+            'grand_total_month': data.get('grand_total_month', 0),
+            'grand_total_remaining': data.get('grand_total_remaining', 0),
+            'grand_total_rate': data.get('grand_total_rate', 0),
+            'confirmed_at': snapshot.confirmed_at,
+            'confirmed_by': snapshot.confirmed_by,
+        }
+
+        return TemplateResponse(request, 'admin/confirmed_budget.html', context)

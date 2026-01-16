@@ -1,0 +1,252 @@
+{% extends "admin/base_site.html" %}
+{% load i18n humanize static %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:confirmed_report' %}">월간보고서(확정)</a></li>
+        <li class="breadcrumb-item active">{{ book_type_display }}(확정)</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .confirmed-cashbook-container {
+        max-width: 900px;
+    }
+    .confirmed-header {
+        text-align: center;
+        margin-bottom: 15px;
+    }
+    .confirmed-header h1 {
+        font-size: 22px;
+        margin-bottom: 5px;
+    }
+    .confirmed-header .status {
+        font-size: 13px;
+        color: #28a745;
+        margin-bottom: 10px;
+    }
+    .year-month-selector {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .year-month-selector select {
+        padding: 6px 12px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .year-month-selector .btn-go {
+        padding: 6px 15px;
+        font-size: 13px;
+        background: #417690;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .section-title {
+        font-size: 14px;
+        font-weight: bold;
+        margin: 15px 0 8px 0;
+        display: flex;
+        justify-content: space-between;
+    }
+    .section-title .unit {
+        font-weight: normal;
+        color: #888;
+    }
+    .cashbook-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        table-layout: fixed;
+    }
+    .cashbook-table th, .cashbook-table td {
+        border: 1px solid #999;
+        padding: 6px 8px;
+        text-align: center;
+    }
+    .cashbook-table th {
+        background: #e8e8e8;
+        font-weight: bold;
+    }
+    .cashbook-table .col-day { width: 50px; }
+    .cashbook-table .col-category { width: 200px; text-align: left; padding-left: 10px; }
+    .cashbook-table .col-amount { width: 120px; text-align: right; padding-right: 10px; }
+    .cashbook-table .col-note { width: 150px; text-align: left; padding-left: 8px; }
+    .cashbook-table .subtotal-row {
+        background: #f5f5f5;
+        font-weight: bold;
+    }
+    .summary-section {
+        margin-top: 20px;
+        padding: 15px;
+        background: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .summary-section table {
+        width: 100%;
+        font-size: 13px;
+    }
+    .summary-section td {
+        padding: 5px 10px;
+    }
+    .summary-section .label {
+        font-weight: bold;
+        width: 150px;
+    }
+    .summary-section .amount {
+        text-align: right;
+        width: 150px;
+    }
+    .bottom-controls {
+        margin-top: 20px;
+        text-align: center;
+    }
+    .bottom-controls .btn {
+        padding: 8px 20px;
+        font-size: 13px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+        margin: 0 5px;
+    }
+    .bottom-controls .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+    .bottom-controls .btn-print {
+        background: #28a745;
+        color: white;
+    }
+</style>
+
+<div class="confirmed-cashbook-container">
+    <div class="confirmed-header">
+        <h1>{{ book_type_display }}(확정) - {{ year }}년 {{ month }}월</h1>
+        <div class="status">확정일시: {{ confirmed_at|date:"Y-m-d H:i" }} {% if confirmed_by %}({{ confirmed_by }}){% endif %}</div>
+    </div>
+
+    <div class="year-month-selector">
+        <select id="select_year">
+            {% for y in year_range %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+            {% endfor %}
+        </select>
+        <select id="select_month">
+            {% for m in month_range %}
+            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}월</option>
+            {% endfor %}
+        </select>
+        <button type="button" class="btn-go" onclick="goToDate()">조회</button>
+    </div>
+
+    <div class="section-title"><span>1. 수입내역</span><span class="unit">(단위:원)</span></div>
+    <table class="cashbook-table">
+        <thead>
+            <tr>
+                <th class="col-day">일자</th>
+                <th class="col-category">내용</th>
+                <th class="col-amount">금액</th>
+                <th class="col-note">비고</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in income_entries %}
+            {% if entry.amount %}
+            <tr>
+                <td>{{ entry.date|slice:"8:10" }}</td>
+                <td class="col-category">{{ entry.category__name|default:entry.description }}</td>
+                <td class="col-amount">{{ entry.amount|floatformat:0|intcomma }}</td>
+                <td class="col-note">{{ entry.note }}</td>
+            </tr>
+            {% endif %}
+            {% empty %}
+            <tr>
+                <td colspan="4" style="color: #888;">수입 내역이 없습니다.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="subtotal-row">
+                <td colspan="2">소계</td>
+                <td class="col-amount">{{ income_total|floatformat:0|intcomma }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="section-title"><span>2. 지출내역</span><span class="unit">(단위:원)</span></div>
+    <table class="cashbook-table">
+        <thead>
+            <tr>
+                <th class="col-day">일자</th>
+                <th class="col-category">내용</th>
+                <th class="col-amount">금액</th>
+                <th class="col-note">비고</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in expense_entries %}
+            {% if entry.amount %}
+            <tr>
+                <td>{{ entry.date|slice:"8:10" }}</td>
+                <td class="col-category">{{ entry.account__account_name|default:entry.category__name|default:entry.description }}</td>
+                <td class="col-amount">{{ entry.amount|floatformat:0|intcomma }}</td>
+                <td class="col-note">{{ entry.note }}</td>
+            </tr>
+            {% endif %}
+            {% empty %}
+            <tr>
+                <td colspan="4" style="color: #888;">지출 내역이 없습니다.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="subtotal-row">
+                <td colspan="2">소계</td>
+                <td class="col-amount">{{ expense_total|floatformat:0|intcomma }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="summary-section">
+        <table>
+            <tr>
+                <td class="label">전월이월</td>
+                <td class="amount">{{ prev_balance|floatformat:0|intcomma }} 원</td>
+                <td class="label">수입 합계</td>
+                <td class="amount">{{ income_total|floatformat:0|intcomma }} 원</td>
+            </tr>
+            <tr>
+                <td class="label">지출 합계</td>
+                <td class="amount">{{ expense_total|floatformat:0|intcomma }} 원</td>
+                <td class="label">차월이월</td>
+                <td class="amount"><strong>{{ next_balance|floatformat:0|intcomma }} 원</strong></td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="bottom-controls">
+        <a href="{% url 'admin:confirmed_report' %}" class="btn btn-secondary">목록으로</a>
+    </div>
+</div>
+
+<script>
+function goToDate() {
+    var year = document.getElementById('select_year').value;
+    var month = document.getElementById('select_month').value;
+    window.location.href = "{% url 'admin:confirmed_cashbook' book_type=book_type year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
+}
+</script>
+{% endblock %}

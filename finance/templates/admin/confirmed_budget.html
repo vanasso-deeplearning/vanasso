@@ -1,0 +1,254 @@
+{% extends "admin/base_site.html" %}
+{% load i18n humanize static %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:confirmed_report' %}">월간보고서(확정)</a></li>
+        <li class="breadcrumb-item active">{{ year }}년 {{ month }}월 예산집행 내역(확정)</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .execution-container {
+        max-width: 1100px;
+    }
+    .execution-header {
+        text-align: center;
+        margin-bottom: 10px;
+    }
+    .execution-header h1 {
+        font-size: 20px;
+        margin: 0 0 5px 0;
+    }
+    .execution-header .status {
+        font-size: 13px;
+        color: #28a745;
+        margin-bottom: 10px;
+    }
+    .execution-header .subtitle {
+        font-size: 13px;
+        color: #666;
+        margin-bottom: 5px;
+    }
+    .unit-row {
+        text-align: right;
+        font-size: 11px;
+        color: #888;
+        margin-bottom: 5px;
+    }
+    .year-month-selector {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    .year-month-selector select {
+        padding: 5px 10px;
+        font-size: 13px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .year-month-selector .btn-go {
+        padding: 5px 12px;
+        font-size: 12px;
+        background: #417690;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .btn-row {
+        margin-bottom: 10px;
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+    }
+    .btn-row .btn {
+        padding: 6px 16px;
+        font-size: 12px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .btn-row .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+    .execution-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+        table-layout: fixed;
+    }
+    .execution-table th, .execution-table td {
+        border: 1px solid #333;
+        padding: 4px 6px;
+        text-align: center;
+        vertical-align: middle;
+    }
+    .execution-table thead th {
+        background: #f5f5f5;
+        font-weight: bold;
+        text-align: center !important;
+        vertical-align: middle !important;
+    }
+    .execution-table .col-large { width: 55px; }
+    .execution-table .col-medium { width: 110px; }
+    .execution-table .col-item { width: 160px; text-align: left; padding-left: 8px; }
+    .execution-table .col-budget { width: 100px; text-align: right; padding-right: 6px; }
+    .execution-table .col-exec-amount { width: 110px; text-align: right; padding-right: 6px; }
+    .execution-table .col-exec-rate { width: 55px; }
+    .execution-table .col-month { width: 110px; text-align: right; padding-right: 6px; }
+    .execution-table .col-remaining { width: 110px; text-align: right; padding-right: 6px; }
+    .execution-table .col-note { width: 80px; text-align: left; }
+    .execution-table .category-cell {
+        background: #fafafa;
+        font-weight: bold;
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+        letter-spacing: 3px;
+    }
+    .execution-table .medium-cell {
+        background: #fafafa;
+    }
+    .execution-table .subtotal-row {
+        background: #f0f0f0;
+    }
+    .execution-table .subtotal-row td {
+        font-weight: bold;
+    }
+    .execution-table .large-total-row {
+        background: #e8e8e8;
+    }
+    .execution-table .large-total-row td {
+        font-weight: bold;
+    }
+    .execution-table .total-row {
+        background: #d0d0d0;
+    }
+    .execution-table .total-row td {
+        font-weight: bold;
+        font-size: 12px;
+    }
+    .execution-table .amount-negative {
+        color: #dc3545;
+    }
+</style>
+
+<div class="execution-container">
+    <div class="execution-header">
+        <h1>{{ year }}년 {{ month }}월 예산집행 내역(확정)</h1>
+        <div class="status">확정일시: {{ confirmed_at|date:"Y-m-d H:i" }} {% if confirmed_by %}({{ confirmed_by }}){% endif %}</div>
+        <div class="subtitle">담 당 / 국 장 / 회 장</div>
+    </div>
+
+    <div class="year-month-selector">
+        <select id="select_year">
+            {% for y in year_range %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+            {% endfor %}
+        </select>
+        <select id="select_month">
+            {% for m in month_range %}
+            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}월</option>
+            {% endfor %}
+        </select>
+        <button type="button" class="btn-go" onclick="goToDate()">조회</button>
+    </div>
+
+    <div class="btn-row">
+        <a href="{% url 'admin:confirmed_report' %}" class="btn btn-secondary">목록</a>
+    </div>
+
+    <div class="unit-row">(단위 : 원)</div>
+
+    <table class="execution-table">
+        <thead>
+            <tr>
+                <th class="col-large" colspan="2">구 분</th>
+                <th class="col-item">내 역</th>
+                <th class="col-budget">연간 예산</th>
+                <th class="col-exec-amount" colspan="2">집행현황<br><span style="font-size:10px;">누계 및 예산대비(%)</span></th>
+                <th class="col-month">{{ month }}월 집행액</th>
+                <th class="col-remaining">잔여예산</th>
+                <th class="col-note">비 고</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for large_cat, large_data in execution_data.items %}
+                {% for med_cat, med_data in large_data.medium_categories.items %}
+                    {% for item in med_data.items %}
+                    <tr>
+                        {% if forloop.parentloop.first and forloop.first %}
+                        <td class="col-large category-cell" rowspan="{{ large_data.row_count }}">{{ large_cat }}</td>
+                        {% endif %}
+                        {% if forloop.first %}
+                        <td class="col-medium medium-cell" rowspan="{{ med_data.row_count }}">{{ med_cat }}</td>
+                        {% endif %}
+                        <td class="col-item">{{ item.display_name }}</td>
+                        <td class="col-budget">{{ item.annual_budget|floatformat:0|intcomma }}</td>
+                        <td class="col-exec-amount">{% if item.cumulative %}{{ item.cumulative|floatformat:0|intcomma }}{% else %}0{% endif %}</td>
+                        <td class="col-exec-rate">{{ item.exec_rate|floatformat:0 }}%</td>
+                        <td class="col-month">{% if item.monthly %}{{ item.monthly|floatformat:0|intcomma }}{% else %}0{% endif %}</td>
+                        <td class="col-remaining {% if item.remaining < 0 %}amount-negative{% endif %}">{{ item.remaining|floatformat:0|intcomma }}</td>
+                        <td class="col-note">{{ item.note }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if med_data.show_subtotal %}
+                    <tr class="subtotal-row">
+                        <td class="col-item">소 계</td>
+                        <td class="col-budget">{{ med_data.subtotal_budget|floatformat:0|intcomma }}</td>
+                        <td class="col-exec-amount">{{ med_data.subtotal_executed|floatformat:0|intcomma }}</td>
+                        <td class="col-exec-rate">{{ med_data.subtotal_rate|floatformat:0 }}%</td>
+                        <td class="col-month">{% if med_data.subtotal_month %}{{ med_data.subtotal_month|floatformat:0|intcomma }}{% else %}0{% endif %}</td>
+                        <td class="col-remaining {% if med_data.subtotal_remaining < 0 %}amount-negative{% endif %}">{{ med_data.subtotal_remaining|floatformat:0|intcomma }}</td>
+                        <td class="col-note"></td>
+                    </tr>
+                    {% endif %}
+                {% endfor %}
+                <tr class="large-total-row">
+                    <td colspan="3" style="text-align: center;">{{ large_cat }} 계</td>
+                    <td class="col-budget">{{ large_data.total_budget|floatformat:0|intcomma }}</td>
+                    <td class="col-exec-amount">{{ large_data.total_executed|floatformat:0|intcomma }}</td>
+                    <td class="col-exec-rate">{{ large_data.total_rate|floatformat:0 }}%</td>
+                    <td class="col-month">{% if large_data.total_month %}{{ large_data.total_month|floatformat:0|intcomma }}{% else %}0{% endif %}</td>
+                    <td class="col-remaining {% if large_data.total_remaining < 0 %}amount-negative{% endif %}">{{ large_data.total_remaining|floatformat:0|intcomma }}</td>
+                    <td class="col-note"></td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 20px; color: #888;">
+                        확정된 예산 데이터가 없습니다.
+                    </td>
+                </tr>
+            {% endfor %}
+
+            {% if execution_data %}
+            <tr class="total-row">
+                <td colspan="3" style="text-align: center;">합 계</td>
+                <td class="col-budget">{{ grand_total_budget|floatformat:0|intcomma }}</td>
+                <td class="col-exec-amount">{{ grand_total_executed|floatformat:0|intcomma }}</td>
+                <td class="col-exec-rate">{{ grand_total_rate|floatformat:0 }}%</td>
+                <td class="col-month">{% if grand_total_month %}{{ grand_total_month|floatformat:0|intcomma }}{% else %}0{% endif %}</td>
+                <td class="col-remaining {% if grand_total_remaining < 0 %}amount-negative{% endif %}">{{ grand_total_remaining|floatformat:0|intcomma }}</td>
+                <td class="col-note"></td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+function goToDate() {
+    var year = document.getElementById('select_year').value;
+    var month = document.getElementById('select_month').value;
+    window.location.href = "{% url 'admin:confirmed_budget' year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
+}
+</script>
+{% endblock %}
