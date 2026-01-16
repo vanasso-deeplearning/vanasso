@@ -205,8 +205,6 @@
     </div>
 
     <div class="btn-row">
-        <a href="{% url 'admin:budget_execution_print' year=year month=month %}"
-           class="btn btn-print" target="_blank">출력</a>
         <a href="{% url 'admin:monthly_report' %}?year={{ year }}&month={{ month }}"
            class="btn btn-secondary">목록</a>
     </div>

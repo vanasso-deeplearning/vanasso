@@ -11,7 +11,7 @@ from decimal import Decimal
 import pandas as pd
 import json
 
-from .models import Account, Member, Budget, FixedAsset, Transaction, Settlement, CashBook, CashBookCategory, BankAccount, MonthlySnapshot
+from .models import Account, Member, Budget, FixedAsset, Transaction, Settlement, CashBook, CashBookCategory, BankAccount, MonthlySnapshot, DepositLedger
 
 
 # 사용자 Admin 커스터마이징 (스태프 권한 추가 화면에 포함)
@@ -479,19 +479,16 @@ class TransactionAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path('list/', self.admin_site.admin_view(self.transaction_list_view), name='transaction_list'),
             path('card-upload/', self.admin_site.admin_view(self.card_upload_view), name='card_upload'),
             path('card-upload/save/', self.admin_site.admin_view(self.card_upload_save), name='card_upload_save'),
         ]
         return custom_urls + urls
 
     def changelist_view(self, request, extra_context=None):
-        """거래내역추가 메뉴 클릭 시 바로 추가 폼으로 이동"""
-        return redirect('admin:finance_transaction_add')
-
-    def transaction_list_view(self, request):
-        """거래내역 조회/삭제 화면"""
-        return super().changelist_view(request)
+        """거래내역조회/삭제 목록 화면"""
+        extra_context = extra_context or {}
+        extra_context['title'] = '거래내역조회/삭제'
+        return super().changelist_view(request, extra_context)
 
     def get_accounts_json(self):
         """현재 연도 계정과목을 JSON으로 반환"""
@@ -761,7 +758,7 @@ class TransactionAdmin(admin.ModelAdmin):
         else:
             messages.warning(request, '저장된 내역이 없습니다. 계정과목을 선택해주세요.')
 
-        return redirect('admin:transaction_list')
+        return redirect('admin:finance_transaction_changelist')
 
 
 @admin.register(Settlement)
@@ -919,15 +916,18 @@ class CashBookAdmin(admin.ModelAdmin):
         year_range = list(range(2024, 2028))
         month_range = list(range(1, 13))
 
-        # 확정 상태 조회
+        # 확정 상태 조회 (스냅샷 존재 여부로 판단)
         bank_snapshot = MonthlySnapshot.objects.filter(
             snapshot_type='CASHBOOK_BANK', fiscal_year=year, month=month
         ).first()
         cash_snapshot = MonthlySnapshot.objects.filter(
             snapshot_type='CASHBOOK_CASH', fiscal_year=year, month=month
         ).first()
-        is_confirmed = (bank_snapshot and bank_snapshot.is_confirmed) or (cash_snapshot and cash_snapshot.is_confirmed)
-        confirmed_at = bank_snapshot.confirmed_at if bank_snapshot and bank_snapshot.is_confirmed else None
+        # 예금/현금 각각 확정 상태
+        bank_is_confirmed = bank_snapshot is not None
+        cash_is_confirmed = cash_snapshot is not None
+        bank_confirmed_at = bank_snapshot.confirmed_at if bank_snapshot else None
+        cash_confirmed_at = cash_snapshot.confirmed_at if cash_snapshot else None
 
         context = {
             **self.admin_site.each_context(request),
@@ -952,9 +952,11 @@ class CashBookAdmin(admin.ModelAdmin):
             'cash_expense_entries': cash_data['expense_entries'],
             'cash_income_total': cash_data['income_total'],
             'cash_expense_total': cash_data['expense_total'],
-            # 확정 상태
-            'is_confirmed': is_confirmed,
-            'confirmed_at': confirmed_at,
+            # 확정 상태 (예금/현금 각각)
+            'bank_is_confirmed': bank_is_confirmed,
+            'bank_confirmed_at': bank_confirmed_at,
+            'cash_is_confirmed': cash_is_confirmed,
+            'cash_confirmed_at': cash_confirmed_at,
         }
 
         return TemplateResponse(request, 'admin/cashbook_combined.html', context)
@@ -1307,16 +1309,17 @@ class CashBookAdmin(admin.ModelAdmin):
                             category = CashBookCategory.objects.get(pk=int(item_id))
                             display_name = category.name
 
-                        # 예금출납장 + 계정과목 선택 시 Transaction 테이블에도 저장
+                        # 예금/현금출납장 + 계정과목 선택 시 Transaction 테이블에도 저장
                         linked_trans = None
-                        if book_type == 'BANK' and account and amount > 0:
+                        if account and amount > 0:
+                            payment_method = 'BANK' if book_type == 'BANK' else 'CASH'
                             linked_trans = Transaction.objects.create(
                                 date=entry_date,
                                 transaction_type='EXPENSE',
                                 account=account,
                                 description=display_name + (f' ({note})' if note else ''),
                                 amount=amount,
-                                payment_method='BANK',
+                                payment_method=payment_method,
                                 status='APPROVED',
                             )
                             transaction_saved += 1
@@ -1398,9 +1401,9 @@ class CashBookAdmin(admin.ModelAdmin):
             book_type='DEPOSIT', entry_type='EXPENSE', is_active=True
         ).order_by('name'))
 
-        # 기존 데이터 조회 (지출만)
-        expense_entries = list(CashBook.objects.filter(
-            book_type='DEPOSIT', year=year, month=month, entry_type='EXPENSE'
+        # 기존 데이터 조회 (DepositLedger 테이블에서)
+        expense_entries = list(DepositLedger.objects.filter(
+            year=year, month=month
         ).order_by('order').values(
             'id', 'date', 'category_id', 'description', 'amount', 'note', 'order'
         ))
@@ -1436,15 +1439,15 @@ class CashBookAdmin(admin.ModelAdmin):
         return TemplateResponse(request, 'admin/deposit_ledger_form.html', context)
 
     def deposit_ledger_save(self, request):
-        """예수금출납장 저장"""
+        """예수금출납장 저장 (DepositLedger 테이블에 저장)"""
         if request.method != 'POST':
             return redirect('admin:monthly_report')
 
         year = int(request.POST.get('year'))
         month = int(request.POST.get('month'))
 
-        # 기존 데이터 삭제
-        CashBook.objects.filter(book_type='DEPOSIT', year=year, month=month).delete()
+        # 기존 데이터 삭제 (DepositLedger 테이블)
+        DepositLedger.objects.filter(year=year, month=month).delete()
 
         saved_count = 0
 
@@ -1467,11 +1470,9 @@ class CashBookAdmin(admin.ModelAdmin):
 
                     category = CashBookCategory.objects.get(pk=category_id)
 
-                    CashBook.objects.create(
-                        book_type='DEPOSIT',
+                    DepositLedger.objects.create(
                         year=year,
                         month=month,
-                        entry_type='EXPENSE',
                         date=entry_date,
                         category=category,
                         description=category.name,
@@ -1502,6 +1503,19 @@ class CashBookAdmin(admin.ModelAdmin):
             next_month_start = date(year + 1, 1, 1)
         else:
             next_month_start = date(year, month + 1, 1)
+
+        # 예수금출납장에서 '예수금(4대보험)', '예수금(원천세)' 합계 조회 (급여 항목에 합산용)
+        # 당월 예수금 합계
+        deposit_monthly = DepositLedger.objects.filter(
+            year=year, month=month,
+            category__name__in=['예수금(4대보험)', '예수금(원천세)']
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
+        # 누계 예수금 합계 (1월부터 해당 월까지)
+        deposit_cumulative = DepositLedger.objects.filter(
+            year=year, month__lte=month,
+            category__name__in=['예수금(4대보험)', '예수금(원천세)']
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
         # 원본 PDF 형식: 대분류 > 중분류 > 계정명 구조
         # 대분류별로 그룹화하고, 중분류별 소계 표시
@@ -1547,6 +1561,11 @@ class CashBookAdmin(admin.ModelAdmin):
                 transaction_type='EXPENSE',
                 status='APPROVED'
             ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
+            # '급여' 계정인 경우 예수금출납장 금액 합산
+            if acc.account_name == '급여':
+                cumulative += deposit_cumulative
+                monthly += deposit_monthly
 
             annual_budget = budget.total_budget
             exec_rate = (cumulative / annual_budget * 100) if annual_budget > 0 else Decimal('0')
@@ -1616,12 +1635,12 @@ class CashBookAdmin(admin.ModelAdmin):
         year_range = list(range(2024, 2028))
         month_range = list(range(1, 13))
 
-        # 확정 상태 조회
+        # 확정 상태 조회 (스냅샷 존재 여부로 판단)
         budget_snapshot = MonthlySnapshot.objects.filter(
             snapshot_type='BUDGET', fiscal_year=year, month=month
         ).first()
-        is_confirmed = budget_snapshot and budget_snapshot.is_confirmed
-        confirmed_at = budget_snapshot.confirmed_at if is_confirmed else None
+        is_confirmed = budget_snapshot is not None
+        confirmed_at = budget_snapshot.confirmed_at if budget_snapshot else None
 
         context = {
             **self.admin_site.each_context(request),
@@ -1660,9 +1679,18 @@ class CashBookAdmin(admin.ModelAdmin):
 
         year = int(request.POST.get('year'))
         month = int(request.POST.get('month'))
+        requested_snapshot_type = request.POST.get('snapshot_type')  # CASHBOOK_BANK or CASHBOOK_CASH
 
-        # 예금출납장과 현금출납장 둘 다 확정
-        for book_type, snapshot_type in [('BANK', 'CASHBOOK_BANK'), ('CASH', 'CASHBOOK_CASH')]:
+        # 특정 타입만 확정 (지정된 경우)
+        if requested_snapshot_type == 'CASHBOOK_BANK':
+            types_to_confirm = [('BANK', 'CASHBOOK_BANK')]
+        elif requested_snapshot_type == 'CASHBOOK_CASH':
+            types_to_confirm = [('CASH', 'CASHBOOK_CASH')]
+        else:
+            # 둘 다 확정 (이전 호환성)
+            types_to_confirm = [('BANK', 'CASHBOOK_BANK'), ('CASH', 'CASHBOOK_CASH')]
+
+        for book_type, snapshot_type in types_to_confirm:
             # 현재 데이터 조회
             income_entries = list(CashBook.objects.filter(
                 book_type=book_type, year=year, month=month, entry_type='INCOME'
@@ -1684,11 +1712,11 @@ class CashBookAdmin(admin.ModelAdmin):
             prev_balance = Decimal('0')
             if month == 1:
                 prev_snapshot = MonthlySnapshot.objects.filter(
-                    snapshot_type=snapshot_type, fiscal_year=year-1, month=12, is_confirmed=True
+                    snapshot_type=snapshot_type, fiscal_year=year-1, month=12
                 ).first()
             else:
                 prev_snapshot = MonthlySnapshot.objects.filter(
-                    snapshot_type=snapshot_type, fiscal_year=year, month=month-1, is_confirmed=True
+                    snapshot_type=snapshot_type, fiscal_year=year, month=month-1
                 ).first()
             if prev_snapshot and prev_snapshot.snapshot_data.get('next_balance'):
                 prev_balance = Decimal(str(prev_snapshot.snapshot_data['next_balance']))
@@ -1732,7 +1760,14 @@ class CashBookAdmin(admin.ModelAdmin):
                 }
             )
 
-        messages.success(request, f'{year}년 {month}월 예금/현금출납장이 확정되었습니다.')
+        # 메시지 생성
+        if requested_snapshot_type == 'CASHBOOK_BANK':
+            msg = f'{year}년 {month}월 예금출납장이 확정되었습니다.'
+        elif requested_snapshot_type == 'CASHBOOK_CASH':
+            msg = f'{year}년 {month}월 현금출납장이 확정되었습니다.'
+        else:
+            msg = f'{year}년 {month}월 예금/현금출납장이 확정되었습니다.'
+        messages.success(request, msg)
         return redirect('admin:cashbook_combined', year=year, month=month)
 
     def snapshot_confirm_budget(self, request):
@@ -1823,17 +1858,13 @@ class CashBookAdmin(admin.ModelAdmin):
         ).first()
 
         if snapshot:
-            snapshot.is_confirmed = False
-            snapshot.confirmed_at = None
-            snapshot.confirmed_by = ''
-            snapshot.save()
-
             type_names = {
                 'BUDGET': '예산집행내역',
                 'CASHBOOK_BANK': '예금출납장',
                 'CASHBOOK_CASH': '현금출납장',
             }
             type_name = type_names.get(snapshot_type, snapshot_type)
+            snapshot.delete()
             messages.success(request, f'{year}년 {month}월 {type_name} 확정이 해제되었습니다.')
 
         # 리다이렉트
@@ -1856,8 +1887,7 @@ class CashBookAdmin(admin.ModelAdmin):
 
         # 확정된 스냅샷 목록 조회
         confirmed_snapshots = MonthlySnapshot.objects.filter(
-            is_confirmed=True
-        ).values('snapshot_type', 'fiscal_year', 'month', 'confirmed_at').order_by('-fiscal_year', '-month')
+                    ).values('snapshot_type', 'fiscal_year', 'month', 'confirmed_at').order_by('-fiscal_year', '-month')
 
         context = {
             **self.admin_site.each_context(request),
@@ -1876,7 +1906,7 @@ class CashBookAdmin(admin.ModelAdmin):
         """확정된 출납장 조회"""
         snapshot_type = f'CASHBOOK_{book_type}'
         snapshot = MonthlySnapshot.objects.filter(
-            snapshot_type=snapshot_type, fiscal_year=year, month=month, is_confirmed=True
+            snapshot_type=snapshot_type, fiscal_year=year, month=month
         ).first()
 
         if not snapshot:
@@ -1914,7 +1944,7 @@ class CashBookAdmin(admin.ModelAdmin):
     def confirmed_budget_view(self, request, year, month):
         """확정된 예산집행내역 조회"""
         snapshot = MonthlySnapshot.objects.filter(
-            snapshot_type='BUDGET', fiscal_year=year, month=month, is_confirmed=True
+            snapshot_type='BUDGET', fiscal_year=year, month=month
         ).first()
 
         if not snapshot:

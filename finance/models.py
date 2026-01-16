@@ -132,8 +132,8 @@ class Transaction(models.Model):
     updated_at = models.DateTimeField('수정일시', auto_now=True)
 
     class Meta:
-        verbose_name = '거래내역추가'
-        verbose_name_plural = '거래내역추가'
+        verbose_name = '거래내역조회/삭제'
+        verbose_name_plural = '거래내역조회/삭제'
         ordering = ['-date', '-created_at']
 
     def __str__(self):
@@ -291,3 +291,28 @@ class MonthlySnapshot(models.Model):
         type_display = dict(self.SNAPSHOT_TYPES).get(self.snapshot_type, self.snapshot_type)
         status = '확정' if self.is_confirmed else '미확정'
         return f"{self.fiscal_year}년 {self.month}월 {type_display} ({status})"
+
+
+class DepositLedger(models.Model):
+    """예수금출납장(월간보고용) - 별도 테이블로 관리"""
+    year = models.IntegerField('년도')
+    month = models.IntegerField('월')
+    date = models.DateField('일자')
+    category = models.ForeignKey(
+        CashBookCategory, on_delete=models.PROTECT, verbose_name='과목',
+        null=True, blank=True
+    )
+    description = models.CharField('내용', max_length=200, blank=True)
+    amount = models.DecimalField('금액', max_digits=15, decimal_places=0, default=0)
+    note = models.CharField('비고', max_length=200, blank=True)
+    order = models.IntegerField('순서', default=0)
+    created_at = models.DateTimeField('생성일시', auto_now_add=True)
+    updated_at = models.DateTimeField('수정일시', auto_now=True)
+
+    class Meta:
+        verbose_name = '예수금출납장'
+        verbose_name_plural = '예수금출납장'
+        ordering = ['year', 'month', 'order']
+
+    def __str__(self):
+        return f"{self.year}.{self.month} 예수금출납장 - {self.category.name if self.category else self.description}"

@@ -1,42 +1,143 @@
-{% extends "admin/base.html" %}
-{% load i18n %}
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
 
 {% block breadcrumbs %}
 <nav aria-label="breadcrumbs">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
-        <li class="breadcrumb-item active" aria-current="page">카드 엑셀 업로드</li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:monthly_report' %}">월간보고서</a></li>
+        <li class="breadcrumb-item active">카드사용내역입력</li>
     </ol>
 </nav>
 {% endblock %}
 
 {% block content %}
-<h1>{{ title }}</h1>
+<style>
+    .upload-container {
+        max-width: 700px;
+    }
+    .upload-container h1 {
+        font-size: 20px;
+        margin-bottom: 20px;
+        color: #333;
+    }
+    .upload-box {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-left: 4px solid #417690;
+        border-radius: 4px;
+        padding: 25px;
+        margin-bottom: 20px;
+    }
+    .upload-box h2 {
+        font-size: 16px;
+        color: #417690;
+        margin: 0 0 20px 0;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #eee;
+    }
+    .form-group {
+        margin-bottom: 20px;
+    }
+    .form-group label {
+        display: block;
+        font-weight: bold;
+        margin-bottom: 8px;
+        color: #333;
+    }
+    .form-group input[type="file"] {
+        padding: 10px;
+        border: 2px dashed #ccc;
+        border-radius: 4px;
+        width: 100%;
+        background: #f9f9f9;
+        cursor: pointer;
+    }
+    .form-group input[type="file"]:hover {
+        border-color: #417690;
+        background: #f5f9fc;
+    }
+    .help-text {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 4px;
+        padding: 15px;
+        margin-top: 15px;
+    }
+    .help-text strong {
+        display: block;
+        margin-bottom: 8px;
+        color: #417690;
+    }
+    .help-text p {
+        margin: 5px 0;
+        color: #666;
+        font-size: 13px;
+    }
+    .help-text .note {
+        color: #dc3545;
+        font-size: 12px;
+        margin-top: 10px;
+    }
+    .btn-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    .btn {
+        padding: 10px 25px;
+        border: none;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+    }
+    .btn-primary {
+        background: #417690;
+        color: white;
+    }
+    .btn-primary:hover {
+        background: #205067;
+        color: white;
+        text-decoration: none;
+    }
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+    .btn-secondary:hover {
+        background: #545b62;
+        color: white;
+        text-decoration: none;
+    }
+</style>
 
-<div style="margin-bottom: 20px;">
-    <a href="{% url 'admin:finance_transaction_add' %}" class="button">← 거래내역추가</a>
-</div>
+<div class="upload-container">
+    <h1>카드사용내역입력</h1>
 
-<form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
 
-    <fieldset class="module aligned">
-        <h2>카드 사용 내역 엑셀 업로드</h2>
+        <div class="upload-box">
+            <h2>카드 사용 내역 엑셀 업로드</h2>
 
-        <div class="form-row">
-            <label for="excel_file">엑셀 파일:</label>
-            <input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls" required>
+            <div class="form-group">
+                <label for="excel_file">엑셀 파일 선택</label>
+                <input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls" required>
+            </div>
+
+            <div class="help-text">
+                <strong>카드사 엑셀 파일 형식</strong>
+                <p>필수 컬럼: 이용일자, 가맹점명, 매출금액, 취소구분</p>
+                <p class="note">※ 취소구분이 '정상'인 건만 업로드됩니다.</p>
+            </div>
         </div>
 
-        <p class="help">
-            <strong>카드사 엑셀 파일 형식</strong><br>
-            필수 컬럼: 이용일자, 가맹점명, 매출금액, 취소구분<br>
-            ※ 취소구분이 '정상'인 건만 업로드됩니다.
-        </p>
-    </fieldset>
-
-    <div class="submit-row">
-        <input type="submit" value="업로드" class="default">
-    </div>
-</form>
+        <div class="btn-row">
+            <button type="submit" class="btn btn-primary">업로드</button>
+            <a href="{% url 'admin:monthly_report' %}" class="btn btn-secondary">목록</a>
+        </div>
+    </form>
+</div>
 {% endblock %}

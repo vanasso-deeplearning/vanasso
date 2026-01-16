@@ -47,9 +47,13 @@
     .confirm-status { font-size: 12px; color: #28a745; margin-left: 10px; }
     .two-column { display: flex; gap: 30px; }
     .column { flex: 1; min-width: 0; }
-    .column-header { text-align: center; margin-bottom: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; }
+    .column-header { text-align: center; margin-bottom: 10px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
     .column-header h2 { font-size: 18px; text-decoration: underline; margin: 0; }
     .column-header .btn-print { padding: 4px 12px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; text-decoration: none; }
+    .column-header .confirm-buttons { display: flex; align-items: center; gap: 8px; }
+    .column-header .confirm-status { font-size: 11px; color: #28a745; }
+    .column-header .btn-confirm-sm { padding: 3px 10px; font-size: 11px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; }
+    .column-header .btn-cancel-sm { padding: 3px 10px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer; }
     .section-title {
         font-size: 13px; font-weight: bold; margin: 12px 0 6px 0;
         display: flex; justify-content: space-between;
@@ -104,12 +108,6 @@
             </select>
             <button type="button" class="btn btn-go" onclick="goToDate()">조회</button>
             <button type="submit" class="btn btn-save">저장</button>
-            {% if is_confirmed %}
-            <span class="confirm-status">✓ 확정됨 ({{ confirmed_at|date:"Y-m-d H:i" }})</span>
-            <button type="button" class="btn btn-cancel" onclick="cancelConfirm()">확정해제</button>
-            {% else %}
-            <button type="button" class="btn btn-confirm" onclick="confirmSnapshot()">확정</button>
-            {% endif %}
         </div>
 
         <div class="two-column">
@@ -117,7 +115,14 @@
             <div class="column">
                 <div class="column-header">
                     <h2>예 금 출 납 장</h2>
-                    <a href="{% url 'admin:cashbook_pdf' book_type='BANK' year=year month=month %}" class="btn-print" target="_blank">출력</a>
+                    <div class="confirm-buttons">
+                        {% if bank_is_confirmed %}
+                        <span class="confirm-status">✓확정 ({{ bank_confirmed_at|date:"Y-m-d H:i" }})</span>
+                        <button type="button" class="btn btn-cancel-sm" onclick="cancelConfirm('CASHBOOK_BANK')">확정해제</button>
+                        {% else %}
+                        <button type="button" class="btn btn-confirm-sm" onclick="confirmSnapshot('CASHBOOK_BANK')">확정</button>
+                        {% endif %}
+                    </div>
                 </div>
 
                 <div class="section-title"><span>1. 수입내역</span><span class="unit">(단위:원)</span></div>
@@ -157,7 +162,14 @@
             <div class="column">
                 <div class="column-header">
                     <h2>현 금 출 납 장</h2>
-                    <a href="{% url 'admin:cashbook_pdf' book_type='CASH' year=year month=month %}" class="btn-print" target="_blank">출력</a>
+                    <div class="confirm-buttons">
+                        {% if cash_is_confirmed %}
+                        <span class="confirm-status">✓확정 ({{ cash_confirmed_at|date:"Y-m-d H:i" }})</span>
+                        <button type="button" class="btn btn-cancel-sm" onclick="cancelConfirm('CASHBOOK_CASH')">확정해제</button>
+                        {% else %}
+                        <button type="button" class="btn btn-confirm-sm" onclick="confirmSnapshot('CASHBOOK_CASH')">확정</button>
+                        {% endif %}
+                    </div>
                 </div>
 
                 <div class="section-title"><span>1. 수입내역</span><span class="unit">(단위:원)</span></div>
@@ -238,22 +250,25 @@ function goToDate() {
     window.location.href = "{% url 'admin:cashbook_combined' year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
 }
 
-function confirmSnapshot() {
-    if (confirm('{{ year }}년 {{ month }}월 예금/현금출납장을 확정하시겠습니까?\n\n확정 후에는 데이터가 스냅샷으로 저장됩니다.')) {
+function confirmSnapshot(snapshotType) {
+    var typeName = snapshotType === 'CASHBOOK_BANK' ? '예금출납장' : '현금출납장';
+    if (confirm('{{ year }}년 {{ month }}월 ' + typeName + '을 확정하시겠습니까?\n\n확정 후에는 데이터가 스냅샷으로 저장됩니다.')) {
         var form = document.createElement('form');
         form.method = 'POST';
         form.action = '{% url "admin:snapshot_confirm_cashbook" %}';
-        form.innerHTML = '{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">';
+        form.innerHTML = '{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="snapshot_type" value="' + snapshotType + '">';
         document.body.appendChild(form);
         form.submit();
     }
 }
 
-function cancelConfirm() {
-    if (confirm('{{ year }}년 {{ month }}월 예금/현금출납장 확정을 해제하시겠습니까?')) {
+function cancelConfirm(snapshotType) {
+    var typeName = snapshotType === 'CASHBOOK_BANK' ? '예금출납장' : '현금출납장';
+    if (confirm('{{ year }}년 {{ month }}월 ' + typeName + ' 확정을 해제하시겠습니까?')) {
         var form = document.createElement('form');
         form.method = 'POST';
-        form.action = '{% url "admin:snapshot_cancel" snapshot_type="CASHBOOK_BANK" year=year month=month %}';
+        var cancelUrl = '{% url "admin:snapshot_cancel" snapshot_type="CASHBOOK_BANK" year=year month=month %}'.replace('CASHBOOK_BANK', snapshotType);
+        form.action = cancelUrl;
         form.innerHTML = '{% csrf_token %}';
         document.body.appendChild(form);
         form.submit();

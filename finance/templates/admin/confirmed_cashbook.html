@@ -148,6 +148,7 @@
             {% endfor %}
         </select>
         <button type="button" class="btn-go" onclick="goToDate()">조회</button>
+        <a href="{% url 'admin:cashbook_pdf' book_type=book_type year=year month=month %}" class="btn-go" style="background: #6c757d; text-decoration: none;" target="_blank">출력</a>
     </div>
 
     <div class="section-title"><span>1. 수입내역</span><span class="unit">(단위:원)</span></div>
