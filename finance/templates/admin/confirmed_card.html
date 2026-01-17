@@ -1,0 +1,191 @@
+{% extends "admin/base_site.html" %}
+{% load i18n humanize static %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:confirmed_report' %}">월간보고서(확정)</a></li>
+        <li class="breadcrumb-item active">카드사용내역(확정)</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .confirmed-card-container {
+        max-width: 900px;
+    }
+    .confirmed-header {
+        text-align: center;
+        margin-bottom: 15px;
+    }
+    .confirmed-header h1 {
+        font-size: 22px;
+        margin-bottom: 5px;
+    }
+    .confirmed-header .status {
+        font-size: 13px;
+        color: #28a745;
+        margin-bottom: 10px;
+    }
+    .year-month-selector {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .year-month-selector select {
+        padding: 6px 12px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .year-month-selector .btn-go {
+        padding: 6px 15px;
+        font-size: 13px;
+        background: #417690;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .section-title {
+        font-size: 14px;
+        font-weight: bold;
+        margin: 15px 0 8px 0;
+        display: flex;
+        justify-content: space-between;
+    }
+    .section-title .unit {
+        font-weight: normal;
+        color: #888;
+    }
+    .card-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        table-layout: fixed;
+    }
+    .card-table th, .card-table td {
+        border: 1px solid #999;
+        padding: 6px 8px;
+        text-align: center;
+    }
+    .card-table th {
+        background: #e8e8e8;
+        font-weight: bold;
+    }
+    .card-table .col-no { width: 40px; }
+    .card-table .col-day { width: 50px; }
+    .card-table .col-account { width: 150px; text-align: left; padding-left: 10px; }
+    .card-table .col-amount { width: 100px; text-align: right; padding-right: 10px; }
+    .card-table .col-desc { text-align: left; padding-left: 8px; }
+    .card-table .subtotal-row {
+        background: #f5f5f5;
+        font-weight: bold;
+    }
+    .summary-section {
+        margin-top: 20px;
+        padding: 15px;
+        background: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        text-align: center;
+        font-size: 14px;
+    }
+    .summary-section strong {
+        color: #417690;
+    }
+    .bottom-controls {
+        margin-top: 20px;
+        text-align: center;
+    }
+    .bottom-controls .btn {
+        padding: 8px 20px;
+        font-size: 13px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+        margin: 0 5px;
+    }
+    .bottom-controls .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+</style>
+
+<div class="confirmed-card-container">
+    <div class="confirmed-header">
+        <h1>카드사용내역(확정) - {{ year }}년 {{ month }}월</h1>
+        <div class="status">확정일시: {{ confirmed_at|date:"Y-m-d H:i" }} {% if confirmed_by %}({{ confirmed_by }}){% endif %}</div>
+    </div>
+
+    <div class="year-month-selector">
+        <select id="select_year">
+            {% for y in year_range %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+            {% endfor %}
+        </select>
+        <select id="select_month">
+            {% for m in month_range %}
+            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}월</option>
+            {% endfor %}
+        </select>
+        <button type="button" class="btn-go" onclick="goToDate()">조회</button>
+    </div>
+
+    <div class="section-title"><span>카드 지출 내역</span><span class="unit">(단위:원)</span></div>
+    <table class="card-table">
+        <thead>
+            <tr>
+                <th class="col-no">No</th>
+                <th class="col-day">일자</th>
+                <th class="col-account">계정과목</th>
+                <th class="col-amount">금액</th>
+                <th class="col-desc">가맹점명</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in card_items %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>{{ item.day }}</td>
+                <td class="col-account">{{ item.account_name }}</td>
+                <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
+                <td class="col-desc">{{ item.description }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" style="color: #888;">카드 사용 내역이 없습니다.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="subtotal-row">
+                <td colspan="3">합계</td>
+                <td class="col-amount">{{ total_amount|floatformat:0|intcomma }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="summary-section">
+        총 <strong>{{ item_count }}건</strong> / <strong>{{ total_amount|floatformat:0|intcomma }}원</strong>
+    </div>
+
+    <div class="bottom-controls">
+        <a href="{% url 'admin:confirmed_report' %}" class="btn btn-secondary">목록으로</a>
+    </div>
+</div>
+
+<script>
+function goToDate() {
+    var year = document.getElementById('select_year').value;
+    var month = document.getElementById('select_month').value;
+    window.location.href = "{% url 'admin:confirmed_card' year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
+}
+</script>
+{% endblock %}

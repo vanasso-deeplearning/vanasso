@@ -711,6 +711,52 @@ class TransactionAdmin(admin.ModelAdmin):
                 for item in card_items
             ]
 
+            # 업로드된 파일의 연월 추출 (첫 번째 항목 기준)
+            if card_items:
+                first_date = card_items[0]['date']
+                upload_year = first_date.year
+                upload_month = first_date.month
+
+                # 해당 연월의 기존 카드 지출 내역 조회
+                existing_card_expenses = Transaction.objects.filter(
+                    date__year=upload_year,
+                    date__month=upload_month,
+                    transaction_type='EXPENSE',
+                    payment_method='CARD'
+                ).select_related('account').order_by('date')
+
+                existing_items = []
+                existing_total = Decimal('0')
+                for txn in existing_card_expenses:
+                    existing_items.append({
+                        'day': txn.date.day,
+                        'account_name': txn.account.account_name if txn.account else '',
+                        'amount': int(txn.amount),
+                        'description': txn.description or '',
+                    })
+                    existing_total += txn.amount
+
+                context['existing_items'] = existing_items
+                context['existing_total'] = int(existing_total)
+                context['existing_count'] = len(existing_items)
+                context['upload_year'] = upload_year
+                context['upload_month'] = upload_month
+
+                # 확정 상태 확인
+                snapshot = MonthlySnapshot.objects.filter(
+                    fiscal_year=upload_year,
+                    month=upload_month,
+                    snapshot_type='CARD_EXPENSE',
+                    is_confirmed=True
+                ).first()
+
+                if snapshot:
+                    context['is_confirmed'] = True
+                    context['confirmed_at'] = snapshot.confirmed_at.strftime('%Y-%m-%d %H:%M')
+                else:
+                    context['is_confirmed'] = False
+                    context['confirmed_at'] = None
+
             return TemplateResponse(request, 'admin/card_upload_confirm.html', context)
 
         return TemplateResponse(request, 'admin/card_upload.html', context)
@@ -815,6 +861,20 @@ class TransactionAdmin(admin.ModelAdmin):
             # 방금 저장한 항목의 index 목록 (왼쪽 테이블 표시용)
             saved_indices = [item['index'] for item in saved_items]
 
+            # 확정 상태 확인
+            is_confirmed = False
+            confirmed_at = None
+            if card_items:
+                snapshot = MonthlySnapshot.objects.filter(
+                    snapshot_type='CARD_EXPENSE',
+                    fiscal_year=year,
+                    month=month,
+                    is_confirmed=True
+                ).first()
+                if snapshot:
+                    is_confirmed = True
+                    confirmed_at = snapshot.confirmed_at.strftime('%Y-%m-%d %H:%M') if snapshot.confirmed_at else None
+
             return JsonResponse({
                 'saved_count': saved_count,
                 'skipped_count': skipped_count,
@@ -822,6 +882,10 @@ class TransactionAdmin(admin.ModelAdmin):
                 'saved_items': all_items,
                 'saved_indices': saved_indices,
                 'total_amount': int(total_amount),
+                'year': year,
+                'month': month,
+                'is_confirmed': is_confirmed,
+                'confirmed_at': confirmed_at,
             })
 
         # 일반 요청 시 결과 화면으로 이동
@@ -872,10 +936,12 @@ class CashBookAdmin(admin.ModelAdmin):
             path('snapshot/confirm/cashbook/', self.admin_site.admin_view(self.snapshot_confirm_cashbook), name='snapshot_confirm_cashbook'),
             path('snapshot/confirm/budget/', self.admin_site.admin_view(self.snapshot_confirm_budget), name='snapshot_confirm_budget'),
             path('snapshot/cancel/<str:snapshot_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.snapshot_cancel), name='snapshot_cancel'),
+            path('snapshot/confirm/card/', self.admin_site.admin_view(self.snapshot_confirm_card), name='snapshot_confirm_card'),
             # 월간보고서(확정)
             path('confirmed-report/', self.admin_site.admin_view(self.confirmed_report_main), name='confirmed_report'),
             path('confirmed-report/cashbook/<str:book_type>/<int:year>/<int:month>/', self.admin_site.admin_view(self.confirmed_cashbook_view), name='confirmed_cashbook'),
             path('confirmed-report/budget/<int:year>/<int:month>/', self.admin_site.admin_view(self.confirmed_budget_view), name='confirmed_budget'),
+            path('confirmed-report/card/<int:year>/<int:month>/', self.admin_site.admin_view(self.confirmed_card_view), name='confirmed_card'),
         ]
         return custom_urls + urls
 
@@ -1930,8 +1996,12 @@ class CashBookAdmin(admin.ModelAdmin):
 
     def snapshot_cancel(self, request, snapshot_type, year, month):
         """스냅샷 확정 해제"""
+        from django.http import JsonResponse
+
         if request.method != 'POST':
             return redirect('admin:monthly_report')
+
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
         snapshot = MonthlySnapshot.objects.filter(
             snapshot_type=snapshot_type, fiscal_year=year, month=month
@@ -1942,14 +2012,22 @@ class CashBookAdmin(admin.ModelAdmin):
                 'BUDGET': '예산집행내역',
                 'CASHBOOK_BANK': '예금출납장',
                 'CASHBOOK_CASH': '현금출납장',
+                'CARD_EXPENSE': '카드사용내역',
             }
             type_name = type_names.get(snapshot_type, snapshot_type)
             snapshot.delete()
-            messages.success(request, f'{year}년 {month}월 {type_name} 확정이 해제되었습니다.')
+            msg = f'{year}년 {month}월 {type_name} 확정이 해제되었습니다.'
+
+            if is_ajax:
+                return JsonResponse({'success': True, 'message': msg})
+
+            messages.success(request, msg)
 
         # 리다이렉트
         if snapshot_type == 'BUDGET':
             return redirect('admin:budget_execution', year=year, month=month)
+        elif snapshot_type == 'CARD_EXPENSE':
+            return redirect('admin:card_upload')
         else:
             return redirect('admin:cashbook_combined', year=year, month=month)
 
@@ -2055,3 +2133,104 @@ class CashBookAdmin(admin.ModelAdmin):
         }
 
         return TemplateResponse(request, 'admin/confirmed_budget.html', context)
+
+    def snapshot_confirm_card(self, request):
+        """카드사용내역 스냅샷 확정"""
+        from django.utils import timezone
+        from django.http import JsonResponse
+
+        if request.method != 'POST':
+            return redirect('admin:monthly_report')
+
+        year = int(request.POST.get('year'))
+        month = int(request.POST.get('month'))
+
+        # 해당 월의 카드 지출 조회
+        card_items = list(Transaction.objects.filter(
+            date__year=year,
+            date__month=month,
+            payment_method='CARD',
+            transaction_type='EXPENSE',
+        ).order_by('date').select_related('account').values(
+            'id', 'date', 'account__account_name', 'description', 'amount', 'approval_number'
+        ))
+
+        # 합계 계산
+        total_amount = sum(item['amount'] or 0 for item in card_items)
+
+        # 날짜 직렬화
+        serialized_items = []
+        for item in card_items:
+            serialized_items.append({
+                'id': item['id'],
+                'date': item['date'].isoformat() if item['date'] else None,
+                'day': item['date'].day if item['date'] else None,
+                'account_name': item['account__account_name'] or '',
+                'description': item['description'] or '',
+                'amount': float(item['amount']) if item['amount'] else 0,
+                'approval_number': item['approval_number'] or '',
+            })
+
+        # 스냅샷 데이터 구성
+        snapshot_data = {
+            'card_items': serialized_items,
+            'total_amount': float(total_amount),
+            'item_count': len(card_items),
+        }
+
+        # 스냅샷 생성 또는 업데이트
+        snapshot, created = MonthlySnapshot.objects.update_or_create(
+            snapshot_type='CARD_EXPENSE',
+            fiscal_year=year,
+            month=month,
+            defaults={
+                'snapshot_data': snapshot_data,
+                'is_confirmed': True,
+                'confirmed_at': timezone.now(),
+                'confirmed_by': request.user.username if request.user.is_authenticated else '',
+            }
+        )
+
+        # AJAX 요청 처리
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({
+                'success': True,
+                'message': f'{year}년 {month}월 카드사용내역이 확정되었습니다.',
+                'is_confirmed': True,
+                'confirmed_at': snapshot.confirmed_at.strftime('%Y-%m-%d %H:%M'),
+            })
+
+        messages.success(request, f'{year}년 {month}월 카드사용내역이 확정되었습니다.')
+        return redirect('admin:card_upload')
+
+    def confirmed_card_view(self, request, year, month):
+        """확정된 카드사용내역 조회"""
+        snapshot = MonthlySnapshot.objects.filter(
+            snapshot_type='CARD_EXPENSE', fiscal_year=year, month=month
+        ).first()
+
+        if not snapshot:
+            messages.warning(request, f'{year}년 {month}월 카드사용내역이 확정되지 않았습니다.')
+            return redirect('admin:confirmed_report')
+
+        data = snapshot.snapshot_data
+
+        year_range = list(range(2024, 2028))
+        month_range = list(range(1, 13))
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'카드사용내역(확정) ({year}. {month}월)',
+            'opts': self.model._meta,
+            'year': year,
+            'month': month,
+            'year_range': year_range,
+            'month_range': month_range,
+            'card_items': data.get('card_items', []),
+            'total_amount': data.get('total_amount', 0),
+            'item_count': data.get('item_count', 0),
+            'confirmed_at': snapshot.confirmed_at,
+            'confirmed_by': snapshot.confirmed_by,
+        }
+
+        return TemplateResponse(request, 'admin/confirmed_card.html', context)

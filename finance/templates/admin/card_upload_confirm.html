@@ -109,6 +109,24 @@
         border-radius: 4px; cursor: pointer; text-decoration: none;
     }
     .bottom-controls .btn-secondary { background: #6c757d; color: white; }
+
+    /* 확정 버튼 */
+    .btn-confirm {
+        padding: 4px 12px; font-size: 11px; border: none;
+        border-radius: 3px; cursor: pointer;
+        background: #28a745; color: white; margin-left: 8px;
+    }
+    .btn-confirm:hover { background: #218838; }
+    .btn-cancel-confirm {
+        padding: 4px 12px; font-size: 11px; border: none;
+        border-radius: 3px; cursor: pointer;
+        background: #dc3545; color: white; margin-left: 8px;
+    }
+    .btn-cancel-confirm:hover { background: #c82333; }
+    .confirm-status {
+        font-size: 11px; color: #28a745; font-weight: bold;
+    }
+    .confirm-status.not-confirmed { color: #6c757d; }
 </style>
 
 <div class="two-column-container">
@@ -116,7 +134,7 @@
         <!-- 왼쪽: 계정과목 선택 -->
         <div class="column">
             <div class="column-header">
-                <h2>카드 내역 계정과목 선택</h2>
+                <h2>카드 내역 계정과목 선택 ({{ upload_year }}.{{ upload_month }})</h2>
                 <div class="summary">총 {{ total_count }}건 / {{ total_amount|floatformat:0|intcomma }}원</div>
             </div>
 
@@ -129,6 +147,7 @@
                     {% endfor %}
                 </select>
                 <button type="button" id="bulk_apply_btn">적용</button>
+                <button type="button" id="save_btn" class="btn btn-primary" style="margin-left: 10px;">저장</button>
                 <span style="color: #666;"><span id="checked_count">0</span>건 선택</span>
             </div>
 
@@ -173,24 +192,68 @@
                     </tfoot>
                 </table>
 
-                <div class="btn-row">
-                    <button type="button" id="save_btn" class="btn btn-primary">저장</button>
-                    <a href="{% url 'admin:card_upload' %}" class="btn btn-secondary">취소</a>
-                </div>
             </form>
         </div>
 
         <!-- 오른쪽: 저장 결과 -->
         <div class="column">
             <div class="column-header">
-                <h2>저장 결과</h2>
-                <div class="summary" id="result_summary_header">저장 버튼을 클릭하면 결과가 표시됩니다</div>
+                <h2>저장 결과 ({{ upload_year }}.{{ upload_month }})</h2>
+                <div class="summary" id="result_summary_header">
+                    {% if existing_items %}
+                    카드지출 {{ existing_count }}건
+                    {% else %}
+                    저장 버튼을 클릭하면 결과가 표시됩니다
+                    {% endif %}
+                </div>
             </div>
 
             <div id="result_area">
+                {% if existing_items %}
+                <div class="result-summary">
+                    <span class="success">{{ existing_count }}건 / {{ existing_total|floatformat:0|intcomma }}원</span>
+                    <span style="margin-left: auto;">
+                        {% if is_confirmed %}
+                        <span class="confirm-status">확정됨 ({{ confirmed_at }})</span>
+                        <button type="button" class="btn-cancel-confirm" onclick="cancelConfirm({{ upload_year }}, {{ upload_month }})">확정해제</button>
+                        {% else %}
+                        <span class="confirm-status not-confirmed">미확정</span>
+                        <button type="button" class="btn-confirm" onclick="confirmCard({{ upload_year }}, {{ upload_month }})">확정</button>
+                        {% endif %}
+                    </span>
+                </div>
+                <table class="card-table">
+                    <thead>
+                        <tr>
+                            <th class="col-day">일자</th>
+                            <th class="col-desc">내용</th>
+                            <th class="col-amount">금액</th>
+                            <th class="col-note">비고</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in existing_items %}
+                        <tr>
+                            <td class="col-day">{{ item.day }}</td>
+                            <td class="col-desc">{{ item.account_name }}</td>
+                            <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
+                            <td class="col-note">{{ item.description }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="subtotal-row">
+                            <td colspan="2">소계</td>
+                            <td class="col-amount">{{ existing_total|floatformat:0|intcomma }}</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+                {% else %}
                 <div class="result-placeholder">
                     저장 후 결과가 여기에 표시됩니다
                 </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -256,7 +319,6 @@ $(document).ready(function() {
             }
         });
 
-        alert(checked.length + '건에 계정과목이 적용되었습니다.');
     });
 
     // AJAX 저장
@@ -286,6 +348,16 @@ $(document).ready(function() {
             if (data.skipped_count > 0) {
                 resultHtml += '<span class="skipped"> (미선택 ' + data.skipped_count + '건 제외)</span>';
             }
+            // 확정 버튼 추가
+            resultHtml += '<span style="margin-left: auto;">';
+            if (data.is_confirmed) {
+                resultHtml += '<span class="confirm-status">확정됨 (' + data.confirmed_at + ')</span>';
+                resultHtml += '<button type="button" class="btn-cancel-confirm" onclick="cancelConfirm(' + data.year + ', ' + data.month + ')">확정해제</button>';
+            } else {
+                resultHtml += '<span class="confirm-status not-confirmed">미확정</span>';
+                resultHtml += '<button type="button" class="btn-confirm" onclick="confirmCard(' + data.year + ', ' + data.month + ')">확정</button>';
+            }
+            resultHtml += '</span>';
             resultHtml += '</div>';
 
             resultHtml += '<table class="card-table">';
@@ -332,5 +404,83 @@ $(document).ready(function() {
         });
     });
 });
+
+// 확정 버튼 클릭 (전역 함수)
+function confirmCard(year, month) {
+    if (!confirm(year + '년 ' + month + '월 카드사용내역을 확정하시겠습니까?')) {
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('year', year);
+    formData.append('month', month);
+    formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+    fetch('{% url "admin:snapshot_confirm_card" %}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message);
+            // 버튼 상태 업데이트
+            var summary = document.querySelector('.result-summary');
+            if (summary) {
+                var btnSpan = summary.querySelector('span[style*="margin-left"]');
+                if (btnSpan) {
+                    btnSpan.innerHTML = '<span class="confirm-status">확정됨 (' + data.confirmed_at + ')</span>' +
+                        '<button type="button" class="btn-cancel-confirm" onclick="cancelConfirm(' + year + ', ' + month + ')">확정해제</button>';
+                }
+            }
+        } else {
+            alert('확정 중 오류가 발생했습니다.');
+        }
+    })
+    .catch(function(error) {
+        alert('확정 중 오류가 발생했습니다.');
+    });
+}
+
+// 확정해제 버튼 클릭 (전역 함수)
+function cancelConfirm(year, month) {
+    if (!confirm(year + '년 ' + month + '월 카드사용내역 확정을 해제하시겠습니까?')) {
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+    fetch('{% url "admin:snapshot_cancel" snapshot_type="CARD_EXPENSE" year=0 month=0 %}'.replace('/0/', '/' + year + '/').replace('/0/', '/' + month + '/'), {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message);
+            // 버튼 상태 업데이트
+            var summary = document.querySelector('.result-summary');
+            if (summary) {
+                var btnSpan = summary.querySelector('span[style*="margin-left"]');
+                if (btnSpan) {
+                    btnSpan.innerHTML = '<span class="confirm-status not-confirmed">미확정</span>' +
+                        '<button type="button" class="btn-confirm" onclick="confirmCard(' + year + ', ' + month + ')">확정</button>';
+                }
+            }
+        } else {
+            alert('확정해제 중 오류가 발생했습니다.');
+        }
+    })
+    .catch(function(error) {
+        alert('확정해제 중 오류가 발생했습니다.');
+    });
+}
 </script>
 {% endblock extrajs %}

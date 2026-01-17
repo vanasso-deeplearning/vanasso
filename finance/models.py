@@ -262,6 +262,7 @@ class MonthlySnapshot(models.Model):
         ('CASHBOOK_BANK', '예금출납장'),
         ('CASHBOOK_CASH', '현금출납장'),
         ('CASHBOOK_DEPOSIT', '예수금출납장'),
+        ('CARD_EXPENSE', '카드사용내역'),
     ]
 
     snapshot_type = models.CharField('스냅샷유형', max_length=20, choices=SNAPSHOT_TYPES)

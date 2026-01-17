@@ -115,6 +115,7 @@
     .confirmed-table .type-budget { color: #dc3545; }
     .confirmed-table .type-bank { color: #007bff; }
     .confirmed-table .type-cash { color: #28a745; }
+    .confirmed-table .type-card { color: #6f42c1; }
 </style>
 
 <div class="confirmed-container">
@@ -150,8 +151,15 @@
             </a>
         </li>
         <li>
-            <a href="{% url 'admin:confirmed_budget' year=selected_year month=selected_month %}" class="report-item">
+            <a href="{% url 'admin:confirmed_card' year=selected_year month=selected_month %}" class="report-item">
                 <span class="number">3</span>
+                <span class="title">카드사용내역(확정)</span>
+                <div class="desc">확정된 카드 사용 내역을 조회합니다.</div>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:confirmed_budget' year=selected_year month=selected_month %}" class="report-item">
+                <span class="number">4</span>
                 <span class="title">월간 예산집행 내역(확정)</span>
                 <div class="desc">확정된 예산 집행 현황을 조회합니다.</div>
             </a>
@@ -183,6 +191,8 @@
                         <span class="type-bank">예금출납장</span>
                         {% elif snap.snapshot_type == 'CASHBOOK_CASH' %}
                         <span class="type-cash">현금출납장</span>
+                        {% elif snap.snapshot_type == 'CARD_EXPENSE' %}
+                        <span class="type-card">카드사용내역</span>
                         {% else %}
                         {{ snap.snapshot_type }}
                         {% endif %}
@@ -195,6 +205,8 @@
                         <a href="{% url 'admin:confirmed_cashbook' book_type='BANK' year=snap.fiscal_year month=snap.month %}">조회</a>
                         {% elif snap.snapshot_type == 'CASHBOOK_CASH' %}
                         <a href="{% url 'admin:confirmed_cashbook' book_type='CASH' year=snap.fiscal_year month=snap.month %}">조회</a>
+                        {% elif snap.snapshot_type == 'CARD_EXPENSE' %}
+                        <a href="{% url 'admin:confirmed_card' year=snap.fiscal_year month=snap.month %}">조회</a>
                         {% endif %}
                     </td>
                 </tr>
@@ -219,7 +231,8 @@ function updateLinks() {
     var links = document.querySelectorAll('.report-item');
     links[0].href = "{% url 'admin:confirmed_cashbook' book_type='BANK' year=1 month=1 %}".replace('/BANK/1/1/', '/BANK/' + year + '/' + month + '/');
     links[1].href = "{% url 'admin:confirmed_cashbook' book_type='CASH' year=1 month=1 %}".replace('/CASH/1/1/', '/CASH/' + year + '/' + month + '/');
-    links[2].href = "{% url 'admin:confirmed_budget' year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
+    links[2].href = "{% url 'admin:confirmed_card' year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
+    links[3].href = "{% url 'admin:confirmed_budget' year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
 }
 </script>
 {% endblock %}
