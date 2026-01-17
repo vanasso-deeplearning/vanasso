@@ -1,0 +1,113 @@
+{% extends "admin/base_site.html" %}
+{% load i18n humanize static %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:monthly_report' %}">월간보고서</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:card_upload' %}">카드사용내역입력</a></li>
+        <li class="breadcrumb-item active">저장 결과</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .result-container { max-width: 900px; }
+    .result-header {
+        text-align: center; margin-bottom: 15px;
+    }
+    .result-header h1 { font-size: 20px; margin-bottom: 5px; }
+    .result-summary {
+        background: #e7f1ff; padding: 10px 15px; border-radius: 4px;
+        margin-bottom: 15px; font-size: 13px;
+    }
+    .result-summary .success { color: #28a745; font-weight: bold; }
+    .result-summary .duplicate { color: #dc3545; }
+    .result-summary .skipped { color: #6c757d; }
+    .section-title {
+        font-size: 13px; font-weight: bold; margin: 12px 0 6px 0;
+        display: flex; justify-content: space-between;
+    }
+    .section-title .unit { font-weight: normal; color: #888; }
+    .result-table {
+        width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed;
+    }
+    .result-table th, .result-table td {
+        border: 1px solid #999; padding: 2px 4px; text-align: center;
+    }
+    .result-table th { background: #e8e8e8; font-weight: normal; }
+    .result-table .col-day { width: 35px; }
+    .result-table .col-category { width: 180px; text-align: left; padding-left: 6px; }
+    .result-table .col-amount { width: 80px; text-align: right; padding-right: 6px; }
+    .result-table .col-note { }
+    .result-table .subtotal-row { background: #f5f5f5; font-weight: bold; }
+    .bottom-controls {
+        margin-top: 20px; display: flex; gap: 10px; justify-content: center;
+    }
+    .bottom-controls .btn {
+        padding: 8px 20px; font-size: 13px; border: none;
+        border-radius: 4px; cursor: pointer; text-decoration: none;
+    }
+    .bottom-controls .btn-primary { background: #417690; color: white; }
+    .bottom-controls .btn-secondary { background: #6c757d; color: white; }
+</style>
+
+<div class="result-container">
+    <div class="result-header">
+        <h1>카드사용내역 저장 결과</h1>
+    </div>
+
+    <div class="result-summary">
+        <span class="success">{{ saved_count }}건 저장 완료</span>
+        {% if duplicate_count > 0 %}
+        <span class="duplicate"> (중복 {{ duplicate_count }}건 제외)</span>
+        {% endif %}
+        {% if skipped_count > 0 %}
+        <span class="skipped"> (미선택 {{ skipped_count }}건 제외)</span>
+        {% endif %}
+    </div>
+
+    <div class="section-title">
+        <span>저장된 지출내역</span>
+        <span class="unit">(단위:원)</span>
+    </div>
+    <table class="result-table">
+        <thead>
+            <tr>
+                <th class="col-day">일자</th>
+                <th class="col-category">내용</th>
+                <th class="col-amount">금액</th>
+                <th class="col-note">비고</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in saved_items %}
+            <tr>
+                <td class="col-day">{{ item.date.day }}</td>
+                <td class="col-category">{{ item.account_name }}</td>
+                <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
+                <td class="col-note">{{ item.description }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: #888;">저장된 내역이 없습니다.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="subtotal-row">
+                <td colspan="2">소계</td>
+                <td class="col-amount">{{ total_amount|floatformat:0|intcomma }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="bottom-controls">
+        <a href="{% url 'admin:card_upload' %}" class="btn btn-primary">추가 업로드</a>
+        <a href="{% url 'admin:monthly_report' %}" class="btn btn-secondary">월간보고서</a>
+    </div>
+</div>
+{% endblock %}

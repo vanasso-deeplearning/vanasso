@@ -1,11 +1,17 @@
 {% extends "admin/base_site.html" %}
 {% load i18n humanize static %}
 
+{% block extrahead %}
+{{ block.super }}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+{% endblock %}
+
 {% block breadcrumbs %}
 <nav aria-label="breadcrumbs">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
-        <li class="breadcrumb-item"><a href="{% url 'admin:card_upload' %}">카드 엑셀 업로드</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:monthly_report' %}">월간보고서</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:card_upload' %}">카드사용내역입력</a></li>
         <li class="breadcrumb-item active">계정과목 선택</li>
     </ol>
 </nav>
@@ -13,174 +19,202 @@
 
 {% block content %}
 <style>
-    .card-container {
-        max-width: 900px;
+/* v2 - height alignment fix */
+    .two-column-container { max-width: 1600px; }
+    .two-column { display: flex; gap: 30px; }
+    .column { flex: 1; min-width: 0; }
+    .column-header {
+        text-align: center; margin-bottom: 10px;
+        padding: 8px 12px; background: #f8f9fa; border-radius: 4px;
     }
-    .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-        padding: 8px 12px;
-        background: #f8f9fa;
-        border-radius: 4px;
-        font-size: 13px;
-    }
+    .column-header h2 { font-size: 16px; margin: 0; }
+    .column-header .summary { font-size: 12px; color: #666; margin-top: 4px; }
+
     .bulk-apply {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 8px;
-        padding: 6px 10px;
-        background: #e7f1ff;
-        border-radius: 4px;
-        font-size: 12px;
+        display: flex; align-items: center; gap: 8px;
+        margin-bottom: 8px; padding: 6px 10px;
+        background: #e7f1ff; border-radius: 4px; font-size: 12px;
+        min-height: 40px; box-sizing: border-box;
     }
-    .bulk-apply select {
-        padding: 3px 6px;
-        font-size: 12px;
-        border: 1px solid #ccc;
-        border-radius: 3px;
+    .bulk-apply .select2-container { min-width: 200px; }
+    .bulk-apply .select2-container--default .select2-selection--single {
+        height: 28px; font-size: 12px; border: 1px solid #ccc; border-radius: 3px;
     }
+    .bulk-apply .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: 26px; padding-left: 8px;
+    }
+    .bulk-apply .select2-container--default .select2-selection--single .select2-selection__arrow { height: 26px; }
     .bulk-apply button {
-        padding: 4px 12px;
-        background: #417690;
-        color: white;
-        border: none;
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 12px;
+        padding: 4px 12px; background: #417690; color: white;
+        border: none; border-radius: 3px; cursor: pointer; font-size: 12px;
     }
-    .bulk-apply button:hover {
-        background: #205067;
-    }
+    .bulk-apply button:hover { background: #205067; }
+
     .card-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 12px;
-        table-layout: fixed;
+        width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed;
     }
     .card-table th, .card-table td {
-        border: 1px solid #ddd;
-        padding: 4px 6px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        border: 1px solid #999; padding: 2px 4px; text-align: center;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .card-table th {
-        background: #417690;
-        color: white;
-        font-weight: normal;
-        text-align: center;
-    }
-    .card-table tr:nth-child(even) {
-        background: #f9f9f9;
-    }
-    .card-table tr:hover {
-        background: #eef5ff;
-    }
-    .card-table .col-check { width: 28px; text-align: center; }
-    .card-table .col-no { width: 32px; text-align: center; }
-    .card-table .col-date { width: 100px; text-align: center; }
-    .card-table .col-desc { }
-    .card-table .col-amount { width: 85px; text-align: right; }
-    .card-table .col-account { width: 150px; }
+    .card-table th { background: #e8e8e8; font-weight: normal; }
+    .card-table tr:nth-child(even) { background: #f9f9f9; }
+    .card-table tr:hover { background: #eef5ff; }
+    .card-table .col-check { width: 28px; }
+    .card-table .col-no { width: 32px; }
+    .card-table .col-day { width: 35px; }
+    .card-table .col-desc { text-align: left; padding-left: 6px; }
+    .card-table .col-amount { width: 80px; text-align: right; padding-right: 6px; }
+    .card-table .col-account { width: 140px; }
+    .card-table .col-note { text-align: left; padding-left: 6px; }
     .card-table select {
-        width: 100%;
-        padding: 2px 4px;
-        font-size: 11px;
-        border: 1px solid #ccc;
-        border-radius: 2px;
+        width: 100%; padding: 2px 4px; font-size: 10px;
+        border: 1px solid #ccc; border-radius: 2px;
     }
-    .btn-row {
-        margin-top: 10px;
-        padding: 8px 0;
-    }
+    .card-table .subtotal-row { background: #f5f5f5; font-weight: bold; }
+
+    .btn-row { margin-top: 10px; padding: 8px 0; text-align: center; }
     .btn-row .btn {
-        padding: 6px 20px;
-        font-size: 13px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        margin-right: 8px;
+        padding: 6px 20px; font-size: 13px; border: none;
+        border-radius: 4px; cursor: pointer; margin-right: 8px;
     }
-    .btn-row .btn-primary {
-        background: #417690;
-        color: white;
+    .btn-row .btn-primary { background: #417690; color: white; }
+    .btn-row .btn-primary:disabled { background: #aaa; cursor: not-allowed; }
+    .btn-row .btn-secondary { background: #6c757d; color: white; text-decoration: none; }
+
+    /* 오른쪽 결과 영역 */
+    .result-placeholder {
+        display: flex; align-items: center; justify-content: center;
+        height: 300px; background: #f8f9fa; border: 2px dashed #ddd;
+        border-radius: 8px; color: #888; font-size: 14px;
     }
-    .btn-row .btn-secondary {
-        background: #6c757d;
-        color: white;
-        text-decoration: none;
+    .result-summary {
+        background: #e7f1ff; padding: 6px 10px; border-radius: 4px;
+        margin-bottom: 8px; font-size: 12px;
+        min-height: 40px; box-sizing: border-box;
+        display: flex; align-items: center; gap: 8px;
     }
+    .result-summary .success { color: #28a745; font-weight: bold; }
+    .result-summary .duplicate { color: #dc3545; }
+    .result-summary .skipped { color: #6c757d; }
+    .section-title {
+        font-size: 13px; font-weight: bold; margin: 10px 0 6px 0;
+        display: flex; justify-content: space-between;
+    }
+    .section-title .unit { font-weight: normal; color: #888; }
+
+    .bottom-controls { margin-top: 20px; display: flex; gap: 10px; justify-content: center; }
+    .bottom-controls .btn {
+        padding: 8px 20px; font-size: 13px; border: none;
+        border-radius: 4px; cursor: pointer; text-decoration: none;
+    }
+    .bottom-controls .btn-secondary { background: #6c757d; color: white; }
 </style>
 
-<div class="card-container">
-    <div class="card-header">
-        <span><strong>카드 내역 계정과목 선택</strong></span>
-        <span>총 {{ total_count }}건 / ₩{{ total_amount|floatformat:0|intcomma }}</span>
-    </div>
+<div class="two-column-container">
+    <div class="two-column">
+        <!-- 왼쪽: 계정과목 선택 -->
+        <div class="column">
+            <div class="column-header">
+                <h2>카드 내역 계정과목 선택</h2>
+                <div class="summary">총 {{ total_count }}건 / {{ total_amount|floatformat:0|intcomma }}원</div>
+            </div>
 
-    <div class="bulk-apply">
-        <span><strong>일괄 적용:</strong></span>
-        <select id="bulk_account">
-            <option value="">계정과목 선택</option>
-            {% for account in accounts %}
-            <option value="{{ account.id }}">{{ account.account_name }}</option>
-            {% endfor %}
-        </select>
-        <button type="button" id="bulk_apply_btn">적용</button>
-        <span style="color: #666;"><span id="checked_count">0</span>건 선택</span>
-    </div>
+            <div class="bulk-apply">
+                <span><strong>일괄 적용:</strong></span>
+                <select id="bulk_account">
+                    <option value="">계정과목 선택</option>
+                    {% for account in accounts %}
+                    <option value="{{ account.id }}">{{ account.account_name }}</option>
+                    {% endfor %}
+                </select>
+                <button type="button" id="bulk_apply_btn">적용</button>
+                <span style="color: #666;"><span id="checked_count">0</span>건 선택</span>
+            </div>
 
-    <form method="post" action="{% url 'admin:card_upload_save' %}">
-        {% csrf_token %}
-        <table class="card-table">
-            <thead>
-                <tr>
-                    <th class="col-check"><input type="checkbox" id="check_all" title="전체 선택"></th>
-                    <th class="col-no">No</th>
-                    <th class="col-date">이용일자</th>
-                    <th class="col-desc">가맹점명</th>
-                    <th class="col-amount">금액</th>
-                    <th class="col-account">계정과목</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in card_items %}
-                <tr>
-                    <td class="col-check"><input type="checkbox" class="row-check" data-index="{{ item.index }}"></td>
-                    <td class="col-no">{{ forloop.counter }}</td>
-                    <td class="col-date">{{ item.date }}</td>
-                    <td class="col-desc" title="{{ item.description }}">{{ item.description }}</td>
-                    <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
-                    <td class="col-account">
-                        <select name="account_{{ item.index }}" data-index="{{ item.index }}">
-                            <option value="">선택</option>
-                            {% for account in accounts %}
-                            <option value="{{ account.id }}">{{ account.account_name }}</option>
-                            {% endfor %}
-                        </select>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+            <form id="card_save_form">
+                {% csrf_token %}
+                <table class="card-table">
+                    <thead>
+                        <tr>
+                            <th class="col-check"><input type="checkbox" id="check_all" title="전체 선택"></th>
+                            <th class="col-no">No</th>
+                            <th class="col-day">일자</th>
+                            <th class="col-desc">가맹점명</th>
+                            <th class="col-amount">금액</th>
+                            <th class="col-account">계정과목</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in card_items %}
+                        <tr data-index="{{ item.index }}">
+                            <td class="col-check"><input type="checkbox" class="row-check" data-index="{{ item.index }}"></td>
+                            <td class="col-no">{{ forloop.counter }}</td>
+                            <td class="col-day">{{ item.date.day }}</td>
+                            <td class="col-desc" title="{{ item.description }}">{{ item.description }}</td>
+                            <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
+                            <td class="col-account">
+                                <select name="account_{{ item.index }}" data-index="{{ item.index }}">
+                                    <option value="">선택</option>
+                                    {% for account in accounts %}
+                                    <option value="{{ account.id }}">{{ account.account_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="subtotal-row">
+                            <td colspan="4">합계</td>
+                            <td class="col-amount">{{ total_amount|floatformat:0|intcomma }}</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
 
-        <div class="btn-row">
-            <button type="submit" class="btn btn-primary">저장</button>
-            <a href="{% url 'admin:card_upload' %}" class="btn btn-secondary">취소</a>
+                <div class="btn-row">
+                    <button type="button" id="save_btn" class="btn btn-primary">저장</button>
+                    <a href="{% url 'admin:card_upload' %}" class="btn btn-secondary">취소</a>
+                </div>
+            </form>
         </div>
-    </form>
+
+        <!-- 오른쪽: 저장 결과 -->
+        <div class="column">
+            <div class="column-header">
+                <h2>저장 결과</h2>
+                <div class="summary" id="result_summary_header">저장 버튼을 클릭하면 결과가 표시됩니다</div>
+            </div>
+
+            <div id="result_area">
+                <div class="result-placeholder">
+                    저장 후 결과가 여기에 표시됩니다
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
+{% endblock %}
+
+{% block extrajs %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+$(document).ready(function() {
+    // Select2 초기화
+    $('#bulk_account').select2({
+        placeholder: '계정과목 선택',
+        allowClear: true,
+        width: 'resolve'
+    });
+
     var checkAll = document.getElementById('check_all');
     var rowChecks = document.querySelectorAll('.row-check');
     var checkedCount = document.getElementById('checked_count');
-    var bulkAccount = document.getElementById('bulk_account');
     var bulkApplyBtn = document.getElementById('bulk_apply_btn');
+    var saveBtn = document.getElementById('save_btn');
 
     function updateCount() {
         var count = document.querySelectorAll('.row-check:checked').length;
@@ -202,7 +236,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     bulkApplyBtn.addEventListener('click', function() {
-        var accountId = bulkAccount.value;
+        var accountId = $('#bulk_account').val();
         if (!accountId) {
             alert('계정과목을 선택하세요.');
             return;
@@ -224,6 +258,79 @@ document.addEventListener('DOMContentLoaded', function() {
 
         alert(checked.length + '건에 계정과목이 적용되었습니다.');
     });
+
+    // AJAX 저장
+    saveBtn.addEventListener('click', function() {
+        var formData = new FormData(document.getElementById('card_save_form'));
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = '저장 중...';
+
+        fetch('{% url "admin:card_upload_save" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            // 결과 표시
+            var resultHtml = '';
+
+            resultHtml += '<div class="result-summary">';
+            resultHtml += '<span class="success">' + data.saved_count + '건 저장 완료</span>';
+            if (data.duplicate_count > 0) {
+                resultHtml += '<span class="duplicate"> (중복 ' + data.duplicate_count + '건 제외)</span>';
+            }
+            if (data.skipped_count > 0) {
+                resultHtml += '<span class="skipped"> (미선택 ' + data.skipped_count + '건 제외)</span>';
+            }
+            resultHtml += '</div>';
+
+            resultHtml += '<table class="card-table">';
+            resultHtml += '<thead><tr><th class="col-day">일자</th><th class="col-desc">내용</th><th class="col-amount">금액</th><th class="col-note">비고</th></tr></thead>';
+            resultHtml += '<tbody>';
+
+            if (data.saved_items.length > 0) {
+                data.saved_items.forEach(function(item) {
+                    resultHtml += '<tr>';
+                    resultHtml += '<td class="col-day">' + item.day + '</td>';
+                    resultHtml += '<td class="col-desc">' + item.account_name + '</td>';
+                    resultHtml += '<td class="col-amount">' + item.amount.toLocaleString() + '</td>';
+                    resultHtml += '<td class="col-note">' + item.description + '</td>';
+                    resultHtml += '</tr>';
+                });
+            } else {
+                resultHtml += '<tr><td colspan="4" style="text-align:center; color:#888;">저장된 내역이 없습니다.</td></tr>';
+            }
+
+            resultHtml += '</tbody>';
+            resultHtml += '<tfoot><tr class="subtotal-row"><td colspan="2">소계</td><td class="col-amount">' + data.total_amount.toLocaleString() + '</td><td></td></tr></tfoot>';
+            resultHtml += '</table>';
+
+            document.getElementById('result_area').innerHTML = resultHtml;
+            document.getElementById('result_summary_header').textContent = '이번 달 카드지출 ' + data.saved_items.length + '건';
+
+            // 저장된 행 표시 (배경색 변경)
+            if (data.saved_indices) {
+                data.saved_indices.forEach(function(idx) {
+                    var row = document.querySelector('tr[data-index="' + idx + '"]');
+                    if (row) {
+                        row.style.backgroundColor = '#d4edda';
+                    }
+                });
+            }
+
+            saveBtn.disabled = false;
+            saveBtn.textContent = '저장';
+        })
+        .catch(function(error) {
+            alert('저장 중 오류가 발생했습니다.');
+            saveBtn.disabled = false;
+            saveBtn.textContent = '저장';
+        });
+    });
 });
 </script>
-{% endblock %}
+{% endblock extrajs %}

@@ -126,6 +126,7 @@ class Transaction(models.Model):
     )
     amount = models.DecimalField('금액', max_digits=15, decimal_places=0)
     payment_method = models.CharField('결제수단', max_length=10, choices=PAYMENT_METHODS, default='BANK')
+    approval_number = models.CharField('승인번호', max_length=50, null=True, blank=True)
     receipt = models.FileField('증빙파일', upload_to='receipts/%Y/%m/', blank=True)
     status = models.CharField('상태', max_length=10, choices=TRANSACTION_STATUS, default='APPROVED')
     created_at = models.DateTimeField('등록일시', auto_now_add=True)

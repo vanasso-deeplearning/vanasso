@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 from django.urls import path, reverse
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Sum
@@ -591,6 +591,7 @@ class TransactionAdmin(admin.ModelAdmin):
                 'amount': ['매출금액', '이용금액', '승인금액', '결제금액', '금액'],
                 'description': ['가맹점명', '가맹점', '이용가맹점', '이용처', '사용처'],
                 'card_number': ['카드번호', '카드 번호', '카드NO'],
+                'approval_number': ['승인번호', '승인NO', '승인 번호'],
             }
 
             # 실제 컬럼 찾기
@@ -606,6 +607,7 @@ class TransactionAdmin(admin.ModelAdmin):
             amount_col = find_column(df, column_mapping['amount'])
             desc_col = find_column(df, column_mapping['description'])
             card_col = find_column(df, column_mapping['card_number'])
+            approval_col = find_column(df, column_mapping['approval_number'])
 
             # 필수 컬럼 체크
             if not date_col or not amount_col:
@@ -673,6 +675,7 @@ class TransactionAdmin(admin.ModelAdmin):
                     'description': str(row.get(desc_col, '')).strip() if desc_col else '',
                     'amount': amount,
                     'card_number': str(row.get(card_col, '')).strip() if card_col else '',
+                    'approval_number': str(row.get(approval_col, '')).strip() if approval_col else '',
                 })
 
             if not card_items:
@@ -703,6 +706,7 @@ class TransactionAdmin(admin.ModelAdmin):
                     'description': item['description'],
                     'amount': str(item['amount']),
                     'card_number': item['card_number'],
+                    'approval_number': item['approval_number'],
                 }
                 for item in card_items
             ]
@@ -714,17 +718,24 @@ class TransactionAdmin(admin.ModelAdmin):
     def card_upload_save(self, request):
         """카드 내역 일괄 저장"""
         from datetime import datetime
+        from django.http import JsonResponse
 
         if request.method != 'POST':
             return redirect('admin:card_upload')
 
         card_items = request.session.get('card_items', [])
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
         if not card_items:
+            if is_ajax:
+                return JsonResponse({'error': '저장할 데이터가 없습니다.'}, status=400)
             messages.error(request, '저장할 데이터가 없습니다.')
             return redirect('admin:card_upload')
 
         saved_count = 0
         skipped_count = 0
+        duplicate_count = 0
+        saved_items = []
 
         with transaction.atomic():
             for item in card_items:
@@ -736,29 +747,98 @@ class TransactionAdmin(admin.ModelAdmin):
 
                 try:
                     account = Account.objects.get(pk=account_id)
+                    txn_date = datetime.fromisoformat(item['date']).date()
+                    txn_amount = Decimal(item['amount'])
+                    approval_number = item.get('approval_number', '')
+
+                    # 승인번호 기반 중복 체크
+                    if approval_number:
+                        exists = Transaction.objects.filter(
+                            approval_number=approval_number,
+                            payment_method='CARD',
+                        ).exists()
+
+                        if exists:
+                            duplicate_count += 1
+                            continue
+
                     Transaction.objects.create(
-                        date=datetime.fromisoformat(item['date']).date(),
+                        date=txn_date,
                         transaction_type='EXPENSE',
                         account=account,
                         description=item['description'],
-                        amount=Decimal(item['amount']),
+                        amount=txn_amount,
                         payment_method='CARD',
+                        approval_number=approval_number if approval_number else None,
                         status='APPROVED',
                     )
+                    saved_items.append({
+                        'index': item['index'],
+                        'day': txn_date.day,
+                        'date': txn_date.isoformat(),
+                        'account_name': account.account_name,
+                        'amount': int(txn_amount),
+                        'description': item['description'],
+                    })
                     saved_count += 1
                 except Exception as e:
                     skipped_count += 1
 
-        # 세션 정리
+        # 세션은 유지 (추가 저장 가능하도록)
+        # AJAX 요청 시 JSON 응답
+        if is_ajax:
+            # 업로드된 데이터의 연월 파악
+            if card_items:
+                first_date = datetime.fromisoformat(card_items[0]['date']).date()
+                year = first_date.year
+                month = first_date.month
+
+                # 해당 월의 전체 카드 지출 조회 (날짜 역순)
+                all_card_items = Transaction.objects.filter(
+                    date__year=year,
+                    date__month=month,
+                    payment_method='CARD',
+                    transaction_type='EXPENSE',
+                ).order_by('-date').select_related('account')
+
+                all_items = [{
+                    'day': txn.date.day,
+                    'account_name': txn.account.account_name,
+                    'amount': int(txn.amount),
+                    'description': txn.description,
+                } for txn in all_card_items]
+                total_amount = sum(item['amount'] for item in all_items)
+            else:
+                all_items = []
+                total_amount = 0
+
+            # 방금 저장한 항목의 index 목록 (왼쪽 테이블 표시용)
+            saved_indices = [item['index'] for item in saved_items]
+
+            return JsonResponse({
+                'saved_count': saved_count,
+                'skipped_count': skipped_count,
+                'duplicate_count': duplicate_count,
+                'saved_items': all_items,
+                'saved_indices': saved_indices,
+                'total_amount': int(total_amount),
+            })
+
+        # 일반 요청 시 결과 화면으로 이동
         if 'card_items' in request.session:
             del request.session['card_items']
 
-        if saved_count > 0:
-            messages.success(request, f'카드 내역 {saved_count}건 저장 완료' + (f' (미선택 {skipped_count}건 제외)' if skipped_count else ''))
-        else:
-            messages.warning(request, '저장된 내역이 없습니다. 계정과목을 선택해주세요.')
-
-        return redirect('admin:finance_transaction_changelist')
+        total_amount = sum(item['amount'] for item in saved_items)
+        context = {
+            **self.admin_site.each_context(request),
+            'title': '카드사용내역 저장 결과',
+            'saved_count': saved_count,
+            'skipped_count': skipped_count,
+            'duplicate_count': duplicate_count,
+            'saved_items': saved_items,
+            'total_amount': total_amount,
+        }
+        return render(request, 'admin/card_upload_result.html', context)
 
 
 @admin.register(Settlement)
