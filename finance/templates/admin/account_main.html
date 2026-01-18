@@ -12,214 +12,677 @@
 
 {% block content %}
 <style>
-    .account-main-container {
-        max-width: 800px;
-        margin: 0;
-    }
-    .account-main-container h1 {
-        font-size: 20px;
-        margin-bottom: 20px;
-        color: #333;
-    }
-    .year-box {
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        margin-bottom: 20px;
-        padding: 12px 15px;
-        background: #f0f0f0;
-        border-radius: 4px;
-    }
-    .year-box label {
-        font-weight: bold;
-        font-size: 14px;
-    }
-    .year-box select {
-        padding: 6px 12px;
-        font-size: 14px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-    }
-    .year-status {
-        margin-left: auto;
-        font-size: 13px;
-        color: #666;
-    }
-    .year-status strong {
-        color: #333;
-    }
-    .delete-btn {
-        background: #dc3545;
-        color: white;
-        border: none;
-        padding: 5px 12px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 12px;
-        margin-left: 10px;
-    }
-    .delete-btn:hover {
-        background: #c82333;
-    }
+    .account-page { display: flex; gap: 30px; }
+    .left-column { width: 450px; flex-shrink: 0; }
+    .right-column { flex: 1; min-width: 500px; }
+
     .section-box {
-        display: block;
-        margin-bottom: 15px;
-        padding: 15px;
-        background: #fff;
-        border: 1px solid #ddd;
-        border-left: 4px solid #417690;
-        border-radius: 4px;
+        margin-bottom: 15px; padding: 15px;
+        background: #fff; border: 1px solid #ddd;
+        border-left: 4px solid #417690; border-radius: 4px;
     }
-    .section-box h3 {
-        margin: 0 0 8px 0;
-        font-size: 15px;
-        color: #417690;
-    }
-    .section-box p {
-        margin: 0 0 12px 0;
-        font-size: 13px;
-        color: #666;
-    }
+    .section-box h3 { margin: 0 0 8px 0; font-size: 14px; color: #417690; font-weight: bold; }
+    .section-box p { margin: 0 0 12px 0; font-size: 12px; color: #666; }
     .section-box .file-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 10px;
+        display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
     }
-    .section-box .file-row label {
-        font-size: 13px;
-        font-weight: bold;
-        min-width: 70px;
-    }
-    .section-box .file-row input[type="file"] {
-        font-size: 12px;
-    }
-    .section-box .template-link {
-        font-size: 12px;
-        color: #417690;
-    }
+    .section-box .file-row label { font-size: 12px; font-weight: bold; min-width: 70px; }
+    .section-box .file-row input[type="file"] { font-size: 12px; }
+    .section-box .template-link { font-size: 11px; color: #417690; }
     .section-box .info-text {
-        font-size: 11px;
-        color: #888;
-        background: #f8f9fa;
-        padding: 6px 10px;
-        border-radius: 3px;
-        margin-bottom: 10px;
+        font-size: 11px; color: #888; background: #f8f9fa;
+        padding: 6px 10px; border-radius: 3px; margin-bottom: 10px;
     }
     .section-box .btn {
-        display: inline-block;
-        padding: 6px 16px;
+        display: inline-block; padding: 6px 16px; font-size: 12px;
+        border: none; border-radius: 4px; cursor: pointer; text-decoration: none;
+    }
+    .section-box .btn-primary { background: #417690; color: white; }
+    .section-box .btn-primary:hover { background: #205067; }
+    .section-box .btn-secondary { background: #6c757d; color: white; margin-left: 8px; }
+    .section-box .btn-secondary:hover { background: #545b62; }
+    .section-box .btn-delete {
+        padding: 5px 12px; font-size: 12px; background: #dc3545; color: white;
+        border: none; border-radius: 4px; cursor: pointer; margin-left: 8px;
+    }
+    .section-box .year-row {
+        display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    }
+    .section-box .year-row label { font-size: 12px; font-weight: bold; }
+    .section-box .year-row select { padding: 5px 10px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; }
+    .section-box .status-text { font-size: 12px; color: #666; }
+    .section-box .status-text strong { color: #333; }
+    .bottom-controls { margin-top: 20px; display: flex; gap: 10px; justify-content: center; }
+    .bottom-controls .btn {
+        padding: 8px 20px; font-size: 13px; border: none;
+        border-radius: 4px; cursor: pointer; text-decoration: none;
+    }
+    .bottom-controls .btn-secondary { background: #6c757d; color: white; }
+
+    /* 오른쪽 편집 영역 */
+    .edit-area {
+        background: #fff; border: 1px solid #ddd; border-radius: 4px;
+        padding: 20px; min-height: 400px;
+    }
+    .edit-area:empty {
+        display: none;
+    }
+    .edit-area h3 {
+        margin: 0 0 15px 0; font-size: 16px; color: #417690;
+        padding-bottom: 10px; border-bottom: 2px solid #417690;
+    }
+    .edit-area .summary-box {
+        background: #e8f4f8; padding: 10px 15px; border-radius: 4px;
+        margin-bottom: 15px; font-size: 13px;
+    }
+    .edit-area .summary-box strong { color: #417690; }
+    .budget-table {
+        width: 100%; border-collapse: collapse; font-size: 12px;
+    }
+    .budget-table th, .budget-table td {
+        border: 1px solid #ddd; padding: 6px 8px; text-align: left;
+    }
+    .budget-table th {
+        background: #417690; color: white; font-weight: bold; text-align: center;
+    }
+    .budget-table tr:nth-child(even) { background: #f9f9f9; }
+    .budget-table tr:hover { background: #f0f7ff; }
+    .budget-table .code-col { width: 60px; text-align: center; }
+    .budget-table .category-col { width: 180px; font-size: 11px; }
+    .budget-table .name-col { width: 150px; }
+    .budget-table .amount-col { width: 120px; }
+    .budget-table input[type="text"] {
+        width: 100%; padding: 3px 6px; border: 1px solid #ccc;
+        border-radius: 3px; font-size: 12px; box-sizing: border-box;
+    }
+    .budget-table input.amount-input { text-align: right; }
+    .budget-table input:focus {
+        outline: none; border-color: #417690; background: #fff;
+    }
+    .budget-btn-row {
+        display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end;
+    }
+    .budget-btn-row .btn {
+        padding: 8px 20px; font-size: 13px; border: none;
+        border-radius: 4px; cursor: pointer;
+    }
+    .budget-btn-row .btn-primary { background: #417690; color: white; }
+    .budget-btn-row .btn-primary:hover { background: #205067; }
+    .budget-btn-row .btn-secondary { background: #6c757d; color: white; }
+    .loading { text-align: center; padding: 30px; color: #666; }
+    .table-scroll { max-height: 500px; overflow-y: auto; }
+
+    /* 계정과목 추가 폼 스타일 */
+    .form-group {
+        margin-bottom: 15px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
         font-size: 13px;
-        border: none;
+        font-weight: bold;
+        color: #333;
+    }
+    .form-group .required {
+        color: #dc3545;
+    }
+    .form-input {
+        width: 100%;
+        padding: 8px 10px;
+        font-size: 13px;
+        border: 1px solid #ccc;
         border-radius: 4px;
+        box-sizing: border-box;
+    }
+    .form-input:focus {
+        outline: none;
+        border-color: #417690;
+        box-shadow: 0 0 3px rgba(65, 118, 144, 0.3);
+    }
+    .form-input.readonly {
+        background: #f0f0f0;
+        color: #666;
+    }
+    select.form-input {
         cursor: pointer;
-        text-decoration: none;
-    }
-    .section-box .btn-primary {
-        background: #417690;
-        color: white;
-    }
-    .section-box .btn-primary:hover {
-        background: #205067;
-    }
-    .section-box .btn-secondary {
-        background: #6c757d;
-        color: white;
-        margin-left: 8px;
-    }
-    .section-box .btn-secondary:hover {
-        background: #545b62;
     }
 </style>
 
-<div class="account-main-container">
-    <h1>계정과목등록(예산입력)</h1>
-
-    <!-- 회계연도 선택 -->
-    <div class="year-box">
-        <label>회계연도:</label>
-        <select id="fiscal_year" onchange="updateYear(this.value)">
-            {% for year in years %}
-            <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}년</option>
-            {% endfor %}
-        </select>
-        {% if existing_data %}
-        <span class="year-status">
-            <strong>{{ selected_year }}년:</strong> 계정과목 {{ account_count }}건, 예산 {{ budget_count }}건
-            <form method="post" action="{% url 'admin:account_main' %}" style="display: inline;">
+<div class="account-page">
+    <!-- 왼쪽: 기존 메뉴 -->
+    <div class="left-column">
+        <!-- 1. 예산 입력 -->
+        <div class="section-box">
+            <h3>1. 예산 입력</h3>
+            <p>확정된 예산을 업로드하면 지출 계정과목과 예산금액이 함께 등록됩니다.</p>
+            <form method="post" enctype="multipart/form-data" action="{% url 'admin:account_main' %}">
                 {% csrf_token %}
-                <input type="hidden" name="action" value="delete_year_data">
-                <input type="hidden" name="fiscal_year" value="{{ selected_year }}">
-                {% if request.GET.confirm_needed %}
-                <input type="hidden" name="confirm_delete_all" value="yes">
-                <button type="submit" class="delete-btn" onclick="return confirm('{{ selected_year }}년 거래내역, 예산, 계정과목을 모두 삭제합니다. 정말 삭제하시겠습니까?');">
-                    전체 삭제
-                </button>
-                {% else %}
-                <button type="submit" class="delete-btn" onclick="return confirm('{{ selected_year }}년 데이터를 삭제하시겠습니까?');">
-                    삭제
+                <input type="hidden" name="action" value="budget_upload">
+                <div class="year-row">
+                    <label>회계연도:</label>
+                    <select name="fiscal_year" id="fiscal_year_select" onchange="updateYear(this.value)">
+                        {% for year in years %}
+                        <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}년</option>
+                        {% endfor %}
+                    </select>
+                    {% if expense_account_count > 0 or budget_count > 0 %}
+                    <span class="status-text">
+                        <strong>{{ selected_year }}년:</strong> 지출계정 {{ expense_account_count }}건, 예산 {{ budget_count }}건
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="file-row">
+                    <label>엑셀 파일:</label>
+                    <input type="file" name="excel_file" accept=".xlsx,.xls" required>
+                    <a href="{% static 'budget_account_template.xlsx' %}" class="template-link" download>템플릿</a>
+                </div>
+                <div class="info-text">컬럼: 구분(대분류), 구분(중분류), 구분(소분류), 계정명, 계정명2, 연간예산액</div>
+                <button type="submit" class="btn btn-primary">예산 업로드</button>
+                <button type="button" class="btn btn-secondary" onclick="loadBudgetEdit()">예산 일괄 수정/편집</button>
+                {% if existing_data %}
+                <button type="submit" name="action" value="delete_year_data" class="btn-delete" onclick="return confirm('{{ selected_year }}년 데이터를 삭제하시겠습니까?');">
+                    {{ selected_year }}년 삭제
                 </button>
                 {% endif %}
             </form>
-        </span>
-        {% endif %}
+        </div>
+
+        <!-- 2. 계정과목 등록 -->
+        <div class="section-box">
+            <h3>2. 계정과목 등록 (자산/부채/자본/수입)</h3>
+            <p>대차대조표, 수입 관련 계정과목을 엑셀로 업로드합니다.</p>
+            <form method="post" enctype="multipart/form-data" action="{% url 'admin:account_main' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="account_upload">
+                <input type="hidden" name="fiscal_year" value="{{ selected_year }}">
+                <div class="year-row">
+                    <label>회계연도:</label>
+                    <select id="account_year_select" onchange="updateYear(this.value)">
+                        {% for year in years %}
+                        <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}년</option>
+                        {% endfor %}
+                    </select>
+                    {% if non_expense_account_count > 0 %}
+                    <span class="status-text">
+                        <strong>{{ selected_year }}년:</strong> 계정과목 {{ non_expense_account_count }}건
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="file-row">
+                    <label>엑셀 파일:</label>
+                    <input type="file" name="excel_file" accept=".xlsx,.xls" required>
+                    <a href="{% static 'account_template.xlsx' %}" class="template-link" download>템플릿</a>
+                </div>
+                <div class="info-text">컬럼: 계정유형(ASSET/LIABILITY/EQUITY/INCOME), 대분류, 중분류, 소분류, 계정명, 계정명2</div>
+                <button type="submit" class="btn btn-primary">계정과목 업로드</button>
+                <button type="button" class="btn btn-secondary" onclick="loadAccountEdit()">계정과목 일괄 수정/편집</button>
+            </form>
+        </div>
+
+        <!-- 3. 계정과목 개별 추가 -->
+        <div class="section-box">
+            <h3>3. 계정과목 개별 추가</h3>
+            <p>계정과목을 개별적으로 추가합니다.</p>
+            <button type="button" class="btn btn-primary" onclick="showAccountAddForm()">계정과목 추가</button>
+        </div>
     </div>
 
-    <!-- 1. 예산 입력 -->
-    <div class="section-box">
-        <h3>1. 예산 입력</h3>
-        <p>확정된 예산을 업로드하면 지출 계정과목과 예산금액이 함께 등록됩니다.</p>
-        <form method="post" enctype="multipart/form-data" action="{% url 'admin:account_main' %}">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="budget_upload">
-            <input type="hidden" name="fiscal_year" value="{{ selected_year }}">
-            <div class="file-row">
-                <label>엑셀 파일:</label>
-                <input type="file" name="excel_file" accept=".xlsx,.xls" required>
-                <a href="{% static 'budget_account_template.xlsx' %}" class="template-link" download>템플릿</a>
-            </div>
-            <div class="info-text">컬럼: 구분(대분류), 구분(중분류), 구분(소분류), 계정명, 계정명2, 연간예산액</div>
-            <button type="submit" class="btn btn-primary">예산 업로드</button>
-            <a href="{% url 'admin:budget_edit' %}?year={{ selected_year }}" class="btn btn-secondary">예산 일괄 수정/편집</a>
-        </form>
-    </div>
-
-    <!-- 2. 계정과목 등록 -->
-    <div class="section-box">
-        <h3>2. 계정과목 등록 (자산/부채/자본/수입)</h3>
-        <p>대차대조표, 수입 관련 계정과목을 엑셀로 업로드합니다.</p>
-        <form method="post" enctype="multipart/form-data" action="{% url 'admin:account_main' %}">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="account_upload">
-            <input type="hidden" name="fiscal_year" value="{{ selected_year }}">
-            <div class="file-row">
-                <label>엑셀 파일:</label>
-                <input type="file" name="excel_file" accept=".xlsx,.xls" required>
-                <a href="{% static 'account_template.xlsx' %}" class="template-link" download>템플릿</a>
-            </div>
-            <div class="info-text">컬럼: 계정유형(ASSET/LIABILITY/EQUITY/INCOME), 대분류, 중분류, 소분류, 계정명, 계정명2</div>
-            <button type="submit" class="btn btn-primary">계정과목 업로드</button>
-        </form>
-    </div>
-
-    <!-- 3. 계정과목 개별 추가 -->
-    <div class="section-box">
-        <h3>3. 계정과목 개별 추가</h3>
-        <p>계정과목을 개별적으로 추가합니다.</p>
-        <a href="{% url 'admin:finance_account_add' %}?fiscal_year={{ selected_year }}" class="btn btn-primary">계정과목 추가</a>
-    </div>
-
-    <!-- 4. 계정과목 목록 조회 -->
-    <div class="section-box">
-        <h3>4. 계정과목 목록 조회</h3>
-        <p>등록된 계정과목을 조회하고 수정/삭제합니다.</p>
-        <a href="{% url 'admin:finance_account_changelist' %}?fiscal_year={{ selected_year }}" class="btn btn-primary">목록 조회</a>
+    <!-- 오른쪽: 편집 영역 (버튼 클릭 시 표시) -->
+    <div class="right-column">
+        <div class="edit-area" id="edit_area">
+            <!-- 초기에는 비어있음 -->
+        </div>
     </div>
 </div>
 
 <script>
 function updateYear(year) {
     window.location.href = '{% url "admin:account_main" %}?year=' + year;
+}
+
+function loadBudgetEdit() {
+    var year = document.getElementById('fiscal_year_select').value;
+    var area = document.getElementById('edit_area');
+
+    area.innerHTML = '<h3>예산 일괄 수정/편집</h3><div class="loading">로딩 중...</div>';
+
+    fetch('/admin/finance/account/budget-edit/data/?year=' + year)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            renderBudgetEdit(data, year);
+        } else {
+            area.innerHTML = '<h3>예산 일괄 수정/편집</h3><p style="color:#888; text-align:center; padding:20px;">' + (data.error || '데이터를 불러올 수 없습니다.') + '</p>';
+        }
+    })
+    .catch(error => {
+        area.innerHTML = '<h3>예산 일괄 수정/편집</h3><p style="color:#888; text-align:center; padding:20px;">오류가 발생했습니다.</p>';
+        console.error(error);
+    });
+}
+
+function renderBudgetEdit(data, year) {
+    var area = document.getElementById('edit_area');
+
+    if (data.budgets.length === 0) {
+        area.innerHTML = '<h3>예산 일괄 수정/편집</h3><p style="color:#888; text-align:center; padding:20px;">' + year + '년에 등록된 예산이 없습니다.</p>';
+        return;
+    }
+
+    var html = '<h3>예산 일괄 수정/편집 (' + year + '년)</h3>';
+    html += '<div class="summary-box">';
+    html += '<strong>' + year + '년 예산:</strong> 총 ' + data.budgets.length + '건, ';
+    html += '합계 <strong id="total-amount">' + Number(data.total_budget).toLocaleString() + '</strong>원';
+    html += '</div>';
+
+    html += '<form id="budget_edit_form">';
+    html += '<input type="hidden" name="year" value="' + year + '">';
+    html += '<div class="table-scroll">';
+    html += '<table class="budget-table">';
+    html += '<thead><tr>';
+    html += '<th style="width:30px; text-align:center;"><input type="checkbox" id="budget_check_all" onchange="toggleAllBudgetCheck(this)"></th>';
+    html += '<th class="code-col">코드</th>';
+    html += '<th class="category-col">분류</th>';
+    html += '<th class="name-col">계정명</th>';
+    html += '<th class="amount-col">연간예산액</th>';
+    html += '</tr></thead>';
+    html += '<tbody>';
+
+    data.budgets.forEach(function(item, idx) {
+        html += '<tr>';
+        html += '<td style="text-align:center;"><input type="checkbox" class="budget-check" value="' + item.id + '"></td>';
+        html += '<td class="code-col">' + item.code + '</td>';
+        html += '<td class="category-col">' + item.category + '</td>';
+        html += '<td class="name-col">';
+        html += '<input type="hidden" name="budget_id_' + idx + '" value="' + item.id + '">';
+        html += '<input type="text" name="account_name_' + idx + '" value="' + escapeHtml(item.account_name) + '">';
+        html += '</td>';
+        html += '<td class="amount-col">';
+        html += '<input type="text" name="amount_' + idx + '" value="' + Number(item.amount).toLocaleString() + '" class="amount-input" oninput="formatNumber(this)" onchange="updateTotal()">';
+        html += '</td>';
+        html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    html += '<input type="hidden" name="total_count" value="' + data.budgets.length + '">';
+
+    html += '<div class="budget-btn-row">';
+    html += '<button type="button" class="btn btn-danger" onclick="deleteBudgets()" style="background:#dc3545; margin-right:auto;">선택 삭제</button>';
+    html += '<button type="button" class="btn btn-primary" onclick="saveBudgetEdit()">저장</button>';
+    html += '<button type="button" class="btn btn-secondary" onclick="closeEditArea()">닫기</button>';
+    html += '</div>';
+    html += '</form>';
+
+    area.innerHTML = html;
+}
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function formatNumber(input) {
+    var cursorPos = input.selectionStart;
+    var oldLength = input.value.length;
+    var val = input.value.replace(/[^\d]/g, '');
+
+    if (val) {
+        input.value = parseInt(val).toLocaleString();
+    } else {
+        input.value = '';
+    }
+
+    var newLength = input.value.length;
+    var posDiff = newLength - oldLength;
+    input.setSelectionRange(cursorPos + posDiff, cursorPos + posDiff);
+}
+
+function updateTotal() {
+    var total = 0;
+    var inputs = document.querySelectorAll('.amount-input');
+    inputs.forEach(function(input) {
+        var val = input.value.replace(/,/g, '');
+        var num = parseInt(val) || 0;
+        total += num;
+    });
+    var totalEl = document.getElementById('total-amount');
+    if (totalEl) {
+        totalEl.textContent = total.toLocaleString();
+    }
+}
+
+function saveBudgetEdit() {
+    var form = document.getElementById('budget_edit_form');
+    var formData = new FormData(form);
+
+    fetch('/admin/finance/account/budget-edit/save-ajax/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('저장 완료: ' + data.message);
+            // 페이지 새로고침하여 왼쪽 상태 업데이트
+            window.location.reload();
+        } else {
+            alert('저장 실패: ' + (data.error || '알 수 없는 오류'));
+        }
+    })
+    .catch(error => {
+        alert('저장 중 오류가 발생했습니다.');
+        console.error(error);
+    });
+}
+
+function closeEditArea() {
+    var area = document.getElementById('edit_area');
+    area.innerHTML = '';
+}
+
+function showAccountAddForm() {
+    var year = document.getElementById('fiscal_year_select').value;
+    var area = document.getElementById('edit_area');
+
+    var html = '<h3>계정과목 추가</h3>';
+    html += '<form id="account_add_form">';
+    html += '<input type="hidden" name="fiscal_year" value="' + year + '">';
+
+    html += '<div class="form-group">';
+    html += '<label>회계연도</label>';
+    html += '<input type="text" value="' + year + '년" readonly class="form-input readonly">';
+    html += '</div>';
+
+    html += '<div class="form-group">';
+    html += '<label>계정유형 <span class="required">*</span></label>';
+    html += '<select name="account_type" required class="form-input">';
+    html += '<option value="">선택하세요</option>';
+    html += '<option value="ASSET">자산(ASSET)</option>';
+    html += '<option value="LIABILITY">부채(LIABILITY)</option>';
+    html += '<option value="EQUITY">자본(EQUITY)</option>';
+    html += '<option value="INCOME">수입(INCOME)</option>';
+    html += '<option value="EXPENSE">지출(EXPENSE)</option>';
+    html += '</select>';
+    html += '</div>';
+
+    html += '<div class="form-group">';
+    html += '<label>대분류(관)</label>';
+    html += '<input type="text" name="category_large" class="form-input" placeholder="예: 인건비, 사업비">';
+    html += '</div>';
+
+    html += '<div class="form-group">';
+    html += '<label>중분류(항)</label>';
+    html += '<input type="text" name="category_medium" class="form-input">';
+    html += '</div>';
+
+    html += '<div class="form-group">';
+    html += '<label>소분류(목)</label>';
+    html += '<input type="text" name="category_small" class="form-input">';
+    html += '</div>';
+
+    html += '<div class="form-group">';
+    html += '<label>계정명 <span class="required">*</span></label>';
+    html += '<input type="text" name="account_name" required class="form-input" placeholder="계정과목 이름">';
+    html += '</div>';
+
+    html += '<div class="budget-btn-row">';
+    html += '<button type="button" class="btn btn-primary" onclick="saveAccount()">저장</button>';
+    html += '<button type="button" class="btn btn-secondary" onclick="closeEditArea()">취소</button>';
+    html += '</div>';
+    html += '</form>';
+
+    area.innerHTML = html;
+}
+
+function saveAccount() {
+    var form = document.getElementById('account_add_form');
+    var formData = new FormData(form);
+
+    // 필수 항목 검증
+    var accountType = form.querySelector('[name="account_type"]').value;
+    var accountName = form.querySelector('[name="account_name"]').value.trim();
+
+    if (!accountType) {
+        alert('계정유형을 선택해주세요.');
+        return;
+    }
+    if (!accountName) {
+        alert('계정명을 입력해주세요.');
+        return;
+    }
+
+    fetch('/admin/finance/account/account-add-ajax/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('계정과목이 등록되었습니다.\n' + data.message);
+            closeEditArea();
+            // 페이지 새로고침하여 왼쪽 상태 업데이트
+            window.location.reload();
+        } else {
+            alert('등록 실패: ' + (data.error || '알 수 없는 오류'));
+        }
+    })
+    .catch(error => {
+        alert('등록 중 오류가 발생했습니다.');
+        console.error(error);
+    });
+}
+
+// 계정과목 일괄 수정/편집 (자산/부채/자본/수입)
+function loadAccountEdit() {
+    var year = document.getElementById('fiscal_year_select').value;
+    var area = document.getElementById('edit_area');
+
+    area.innerHTML = '<h3>계정과목 일괄 수정/편집</h3><div class="loading">로딩 중...</div>';
+
+    fetch('/admin/finance/account/account-edit/data/?year=' + year)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            renderAccountEdit(data, year);
+        } else {
+            area.innerHTML = '<h3>계정과목 일괄 수정/편집</h3><p style="color:#888; text-align:center; padding:20px;">' + (data.error || '데이터를 불러올 수 없습니다.') + '</p>';
+        }
+    })
+    .catch(error => {
+        area.innerHTML = '<h3>계정과목 일괄 수정/편집</h3><p style="color:#888; text-align:center; padding:20px;">오류가 발생했습니다.</p>';
+        console.error(error);
+    });
+}
+
+function renderAccountEdit(data, year) {
+    var area = document.getElementById('edit_area');
+
+    if (data.accounts.length === 0) {
+        area.innerHTML = '<h3>계정과목 일괄 수정/편집</h3><p style="color:#888; text-align:center; padding:20px;">' + year + '년에 등록된 자산/부채/자본/수입 계정과목이 없습니다.</p>';
+        return;
+    }
+
+    var typeLabels = {
+        'ASSET': '자산',
+        'LIABILITY': '부채',
+        'EQUITY': '자본',
+        'INCOME': '수입'
+    };
+
+    var html = '<h3>계정과목 일괄 수정/편집 (' + year + '년)</h3>';
+    html += '<div class="summary-box">';
+    html += '<strong>' + year + '년 계정과목 (자산/부채/자본/수입):</strong> 총 ' + data.accounts.length + '건';
+    html += '</div>';
+
+    html += '<form id="account_edit_form">';
+    html += '<input type="hidden" name="year" value="' + year + '">';
+    html += '<div class="table-scroll">';
+    html += '<table class="budget-table">';
+    html += '<thead><tr>';
+    html += '<th style="width:30px; text-align:center;"><input type="checkbox" id="account_check_all" onchange="toggleAllAccountCheck(this)"></th>';
+    html += '<th class="code-col">코드</th>';
+    html += '<th style="width:70px; text-align:center;">유형</th>';
+    html += '<th style="width:100px;">대분류</th>';
+    html += '<th style="width:100px;">중분류</th>';
+    html += '<th style="width:100px;">소분류</th>';
+    html += '<th style="width:150px;">계정명</th>';
+    html += '</tr></thead>';
+    html += '<tbody>';
+
+    data.accounts.forEach(function(item, idx) {
+        html += '<tr>';
+        html += '<td style="text-align:center;"><input type="checkbox" class="account-check" value="' + item.id + '"></td>';
+        html += '<td class="code-col">' + item.code + '</td>';
+        html += '<td style="text-align:center;">';
+        html += '<input type="hidden" name="account_id_' + idx + '" value="' + item.id + '">';
+        html += '<span style="font-size:11px;">' + (typeLabels[item.account_type] || item.account_type) + '</span>';
+        html += '</td>';
+        html += '<td><input type="text" name="category_large_' + idx + '" value="' + escapeHtml(item.category_large || '') + '"></td>';
+        html += '<td><input type="text" name="category_medium_' + idx + '" value="' + escapeHtml(item.category_medium || '') + '"></td>';
+        html += '<td><input type="text" name="category_small_' + idx + '" value="' + escapeHtml(item.category_small || '') + '"></td>';
+        html += '<td><input type="text" name="account_name_' + idx + '" value="' + escapeHtml(item.account_name) + '"></td>';
+        html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    html += '<input type="hidden" name="total_count" value="' + data.accounts.length + '">';
+
+    html += '<div class="budget-btn-row">';
+    html += '<button type="button" class="btn btn-danger" onclick="deleteAccounts()" style="background:#dc3545; margin-right:auto;">선택 삭제</button>';
+    html += '<button type="button" class="btn btn-primary" onclick="saveAccountEdit()">저장</button>';
+    html += '<button type="button" class="btn btn-secondary" onclick="closeEditArea()">닫기</button>';
+    html += '</div>';
+    html += '</form>';
+
+    area.innerHTML = html;
+}
+
+function saveAccountEdit() {
+    var form = document.getElementById('account_edit_form');
+    var formData = new FormData(form);
+
+    fetch('/admin/finance/account/account-edit/save-ajax/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('저장 완료: ' + data.message);
+            window.location.reload();
+        } else {
+            alert('저장 실패: ' + (data.error || '알 수 없는 오류'));
+        }
+    })
+    .catch(error => {
+        alert('저장 중 오류가 발생했습니다.');
+        console.error(error);
+    });
+}
+
+// 체크박스 전체 선택/해제
+function toggleAllBudgetCheck(checkbox) {
+    var checkboxes = document.querySelectorAll('.budget-check');
+    checkboxes.forEach(function(cb) {
+        cb.checked = checkbox.checked;
+    });
+}
+
+function toggleAllAccountCheck(checkbox) {
+    var checkboxes = document.querySelectorAll('.account-check');
+    checkboxes.forEach(function(cb) {
+        cb.checked = checkbox.checked;
+    });
+}
+
+// 예산 선택 삭제
+function deleteBudgets() {
+    var checkboxes = document.querySelectorAll('.budget-check:checked');
+    if (checkboxes.length === 0) {
+        alert('삭제할 항목을 선택해주세요.');
+        return;
+    }
+
+    if (!confirm(checkboxes.length + '개의 예산을 삭제하시겠습니까?')) {
+        return;
+    }
+
+    var ids = [];
+    checkboxes.forEach(function(cb) {
+        ids.push(cb.value);
+    });
+
+    fetch('/admin/finance/account/budget-delete-ajax/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ budget_ids: ids })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('삭제 완료: ' + data.message);
+            window.location.reload();
+        } else {
+            alert('삭제 실패: ' + (data.error || '알 수 없는 오류'));
+        }
+    })
+    .catch(error => {
+        alert('삭제 중 오류가 발생했습니다.');
+        console.error(error);
+    });
+}
+
+// 계정과목 선택 삭제
+function deleteAccounts() {
+    var checkboxes = document.querySelectorAll('.account-check:checked');
+    if (checkboxes.length === 0) {
+        alert('삭제할 항목을 선택해주세요.');
+        return;
+    }
+
+    if (!confirm(checkboxes.length + '개의 계정과목을 삭제하시겠습니까?')) {
+        return;
+    }
+
+    var ids = [];
+    checkboxes.forEach(function(cb) {
+        ids.push(cb.value);
+    });
+
+    fetch('/admin/finance/account/account-delete-ajax/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ account_ids: ids })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('삭제 완료: ' + data.message);
+            window.location.reload();
+        } else {
+            alert('삭제 실패: ' + (data.error || '알 수 없는 오류'));
+        }
+    })
+    .catch(error => {
+        alert('삭제 중 오류가 발생했습니다.');
+        console.error(error);
+    });
 }
 </script>
 {% endblock %}

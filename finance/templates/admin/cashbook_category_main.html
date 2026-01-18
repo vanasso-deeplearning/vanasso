@@ -1,0 +1,366 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static humanize %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumbs">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
+        <li class="breadcrumb-item active">출납장과목등록및내역조회</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .category-container { max-width: 1100px; }
+    .two-column { display: flex; gap: 30px; }
+    .column { flex: 1; min-width: 0; }
+    .column-header { text-align: center; margin-bottom: 15px; }
+    .column-header h2 { font-size: 18px; text-decoration: underline; margin: 0 0 5px 0; }
+    .filter-box {
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 15px; padding: 10px;
+        background: #f5f5f5; border-radius: 4px;
+    }
+    .filter-box label { font-size: 13px; font-weight: bold; }
+    .filter-box select { padding: 5px 10px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
+    .filter-box .btn {
+        padding: 5px 15px; font-size: 13px; border: none; border-radius: 4px; cursor: pointer;
+        background: #417690; color: white;
+    }
+    .section-title {
+        font-size: 14px; font-weight: bold; margin: 15px 0 8px 0;
+        padding-bottom: 5px; border-bottom: 1px solid #ddd;
+    }
+    .category-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+    .category-table th, .category-table td { border: 1px solid #999; padding: 6px 8px; text-align: center; }
+    .category-table th { background: #e8e8e8; font-weight: bold; }
+    .category-table .col-name { width: 200px; text-align: left; padding-left: 10px; }
+    .category-table .col-active { width: 60px; }
+    .category-table .col-action { width: 80px; }
+    .category-table input[type="text"] {
+        width: 100%; border: 1px solid #ddd; background: #fff;
+        padding: 4px 6px; font-size: 12px; box-sizing: border-box; border-radius: 3px;
+    }
+    .category-table input[type="checkbox"] { transform: scale(1.2); }
+    .category-table .btn-delete {
+        padding: 2px 8px; font-size: 11px; background: #dc3545; color: white;
+        border: none; border-radius: 3px; cursor: pointer;
+    }
+    .category-table .btn-save {
+        padding: 2px 8px; font-size: 11px; background: #28a745; color: white;
+        border: none; border-radius: 3px; cursor: pointer;
+    }
+    .category-table .new-row { background: #fffde7; }
+    .search-box {
+        background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 15px;
+    }
+    .search-row {
+        display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .search-row:last-child { margin-bottom: 0; }
+    .search-row label { font-size: 13px; font-weight: bold; white-space: nowrap; }
+    .search-row select { padding: 5px 8px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
+    .search-row .btn {
+        padding: 5px 15px; font-size: 13px; border: none; border-radius: 4px; cursor: pointer;
+        background: #417690; color: white;
+    }
+    .result-area {
+        margin-top: 20px; padding: 15px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;
+        min-height: 100px; max-height: 400px; overflow-y: auto;
+    }
+    .result-area p { color: #888; text-align: center; margin: 0; }
+    .result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .result-table th, .result-table td { border: 1px solid #ccc; padding: 6px 8px; }
+    .result-table th { background: #e8e8e8; font-weight: bold; text-align: center; }
+    .result-table td { text-align: center; }
+    .result-table .text-left { text-align: left; }
+    .result-table .text-right { text-align: right; }
+    .result-table tfoot td { background: #f5f5f5; }
+</style>
+
+<div class="category-container">
+    <div class="two-column">
+        <!-- 왼쪽: 출납장과목 등록 -->
+        <div class="column">
+            <div class="column-header">
+                <h2>출납장과목 등록</h2>
+            </div>
+
+            <form method="post" action="{% url 'admin:cashbook_category_save' %}" id="category_form">
+                {% csrf_token %}
+
+                <div class="filter-box">
+                    <label>장부 유형:</label>
+                    <select id="select_book_type" onchange="filterByBookType()">
+                        <option value="ALL" {% if book_type == 'ALL' %}selected{% endif %}>전체</option>
+                        <option value="BANK" {% if book_type == 'BANK' %}selected{% endif %}>예금출납장</option>
+                        <option value="CASH" {% if book_type == 'CASH' %}selected{% endif %}>현금출납장</option>
+                        <option value="DEPOSIT" {% if book_type == 'DEPOSIT' %}selected{% endif %}>예수금출납장</option>
+                    </select>
+                </div>
+
+                <!-- 수입과목 -->
+                <div class="section-title">수입과목</div>
+                <table class="category-table">
+                    <thead>
+                        <tr>
+                            <th class="col-name">과목명</th>
+                            <th class="col-active">사용</th>
+                            <th class="col-action">삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody id="income_tbody">
+                        {% for cat in income_categories %}
+                        <tr data-id="{{ cat.id }}" data-book-type="{{ cat.book_type }}">
+                            <td class="col-name">
+                                <input type="hidden" name="income_id_{{ forloop.counter0 }}" value="{{ cat.id }}">
+                                <input type="hidden" name="income_book_type_{{ forloop.counter0 }}" value="{{ cat.book_type }}">
+                                <input type="text" name="income_name_{{ forloop.counter0 }}" value="{{ cat.name }}">
+                            </td>
+                            <td class="col-active">
+                                <input type="checkbox" name="income_active_{{ forloop.counter0 }}" {% if cat.is_active %}checked{% endif %}>
+                            </td>
+                            <td class="col-action">
+                                <button type="button" class="btn-delete" onclick="deleteRow(this)">삭제</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if book_type != 'ALL' %}
+                        <tr class="new-row">
+                            <td class="col-name">
+                                <input type="hidden" name="income_id_new" value="">
+                                <input type="hidden" name="income_book_type_new" value="{{ book_type }}">
+                                <input type="text" name="income_name_new" placeholder="새 과목명 입력">
+                            </td>
+                            <td class="col-active">
+                                <input type="checkbox" name="income_active_new" checked>
+                            </td>
+                            <td class="col-action">
+                                <button type="submit" class="btn-save">저장</button>
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+
+                <!-- 지출과목 -->
+                <div class="section-title" style="margin-top: 20px;">지출과목</div>
+                <table class="category-table">
+                    <thead>
+                        <tr>
+                            <th class="col-name">과목명</th>
+                            <th class="col-active">사용</th>
+                            <th class="col-action">삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expense_tbody">
+                        {% for cat in expense_categories %}
+                        <tr data-id="{{ cat.id }}" data-book-type="{{ cat.book_type }}">
+                            <td class="col-name">
+                                <input type="hidden" name="expense_id_{{ forloop.counter0 }}" value="{{ cat.id }}">
+                                <input type="hidden" name="expense_book_type_{{ forloop.counter0 }}" value="{{ cat.book_type }}">
+                                <input type="text" name="expense_name_{{ forloop.counter0 }}" value="{{ cat.name }}">
+                            </td>
+                            <td class="col-active">
+                                <input type="checkbox" name="expense_active_{{ forloop.counter0 }}" {% if cat.is_active %}checked{% endif %}>
+                            </td>
+                            <td class="col-action">
+                                <button type="button" class="btn-delete" onclick="deleteRow(this)">삭제</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if book_type != 'ALL' %}
+                        <tr class="new-row">
+                            <td class="col-name">
+                                <input type="hidden" name="expense_id_new" value="">
+                                <input type="hidden" name="expense_book_type_new" value="{{ book_type }}">
+                                <input type="text" name="expense_name_new" placeholder="새 과목명 입력">
+                            </td>
+                            <td class="col-active">
+                                <input type="checkbox" name="expense_active_new" checked>
+                            </td>
+                            <td class="col-action">
+                                <button type="submit" class="btn-save">저장</button>
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+
+                <input type="hidden" name="current_book_type" id="current_book_type" value="{{ book_type }}">
+            </form>
+        </div>
+
+        <!-- 오른쪽: 과목내역 조회 -->
+        <div class="column">
+            <div class="column-header">
+                <h2>과목내역 조회</h2>
+            </div>
+
+            <div class="search-box">
+                <div class="search-row">
+                    <label>장부 유형:</label>
+                    <select id="search_book_type">
+                        <option value="BANK">예금출납장</option>
+                        <option value="CASH">현금출납장</option>
+                        <option value="DEPOSIT">예수금출납장</option>
+                    </select>
+                    <label style="margin-left: 10px;">과목명:</label>
+                    <select id="search_category">
+                        <option value="">-- 선택 --</option>
+                        {% for cat in all_categories %}
+                        <option value="{{ cat.id }}" data-book-type="{{ cat.book_type }}">{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="search-row">
+                    <label>회계연도:</label>
+                    <select id="search_year">
+                        {% for year in years %}
+                        <option value="{{ year }}" {% if year == current_year %}selected{% endif %}>{{ year }}년</option>
+                        {% endfor %}
+                    </select>
+                    <label style="margin-left: 10px;">월:</label>
+                    <select id="search_month">
+                        <option value="">전체</option>
+                        {% for m in months %}
+                        <option value="{{ m }}">{{ m }}월</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" class="btn" style="margin-left: 15px;" onclick="searchCategory()">조회</button>
+                </div>
+            </div>
+
+            <div class="result-area" id="search_result">
+                <p>조회 조건을 선택하고 [조회] 버튼을 클릭하세요.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function filterByBookType() {
+    var bookType = document.getElementById('select_book_type').value;
+    window.location.href = '{% url "admin:cashbook_category_main" %}?book_type=' + bookType;
+}
+
+function deleteRow(btn) {
+    var row = btn.closest('tr');
+    var catId = row.dataset.id;
+
+    if (!catId) {
+        alert('삭제할 수 없습니다.');
+        return;
+    }
+
+    if (!confirm('이 과목을 삭제하시겠습니까?')) {
+        return;
+    }
+
+    fetch('/admin/finance/cashbookcategory/main/delete/' + catId + '/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            row.remove();
+        } else {
+            alert('삭제 실패: ' + (data.error || '알 수 없는 오류'));
+        }
+    })
+    .catch(error => {
+        alert('삭제 중 오류가 발생했습니다.');
+        console.error(error);
+    });
+}
+
+// 장부 유형 변경 시 과목명 필터링
+document.getElementById('search_book_type').addEventListener('change', function() {
+    var bookType = this.value;
+    var categorySelect = document.getElementById('search_category');
+    var options = categorySelect.querySelectorAll('option');
+
+    options.forEach(function(opt) {
+        if (opt.value === '') {
+            opt.style.display = '';
+        } else if (opt.dataset.bookType === bookType) {
+            opt.style.display = '';
+        } else {
+            opt.style.display = 'none';
+        }
+    });
+    categorySelect.value = '';
+});
+
+// 페이지 로드 시 초기 필터링
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('search_book_type').dispatchEvent(new Event('change'));
+});
+
+function searchCategory() {
+    var bookType = document.getElementById('search_book_type').value;
+    var categoryId = document.getElementById('search_category').value;
+    var year = document.getElementById('search_year').value;
+    var month = document.getElementById('search_month').value;
+    var resultArea = document.getElementById('search_result');
+
+    if (!categoryId) {
+        alert('과목명을 선택해주세요.');
+        return;
+    }
+
+    resultArea.innerHTML = '<p>조회 중...</p>';
+
+    var url = '/admin/finance/cashbookcategory/main/search/?book_type=' + bookType +
+              '&category_id=' + categoryId + '&year=' + year;
+    if (month) {
+        url += '&month=' + month;
+    }
+
+    fetch(url)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            if (data.results.length === 0) {
+                resultArea.innerHTML = '<p>조회된 내역이 없습니다. (해당 과목으로 등록된 출납장 내역이 없습니다)</p>';
+                return;
+            }
+
+            var html = '<table class="result-table">';
+            html += '<thead><tr><th>날짜</th><th>내용</th><th>금액</th><th>비고</th></tr></thead>';
+            html += '<tbody>';
+
+            data.results.forEach(function(item) {
+                html += '<tr>';
+                html += '<td>' + item.date + '</td>';
+                html += '<td class="text-left">' + (item.description || '') + '</td>';
+                html += '<td class="text-right">' + Number(item.amount).toLocaleString() + '</td>';
+                html += '<td class="text-left">' + (item.note || '') + '</td>';
+                html += '</tr>';
+            });
+
+            html += '</tbody>';
+            html += '<tfoot><tr>';
+            html += '<td colspan="2" class="text-right"><strong>합계 (' + data.total_count + '건)</strong></td>';
+            html += '<td class="text-right"><strong>' + Number(data.total_amount).toLocaleString() + '</strong></td>';
+            html += '<td></td>';
+            html += '</tr></tfoot>';
+            html += '</table>';
+
+            resultArea.innerHTML = html;
+        } else {
+            resultArea.innerHTML = '<p style="color: red;">' + (data.error || '조회 실패') + '</p>';
+        }
+    })
+    .catch(error => {
+        resultArea.innerHTML = '<p style="color: red;">조회 중 오류가 발생했습니다.</p>';
+        console.error(error);
+    });
+}
+</script>
+{% endblock %}

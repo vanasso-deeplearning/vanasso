@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.db import transaction
 from django.template.response import TemplateResponse
 from django.http import JsonResponse
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import pandas as pd
 import json
 
@@ -166,7 +166,7 @@ class TransactionAdmin(admin.ModelAdmin):
                             cancel_val = cancel_val.replace(',', '').replace('-', '')
                         if cancel_val and float(cancel_val) > 0:
                             continue
-                    except:
+                    except (ValueError, TypeError):
                         pass
 
                 date_val = row.get(date_col, '')
@@ -180,7 +180,7 @@ class TransactionAdmin(admin.ModelAdmin):
                         try:
                             date_obj = datetime.strptime(date_str, fmt).date()
                             break
-                        except:
+                        except ValueError:
                             continue
 
                 if not date_obj:
@@ -191,7 +191,7 @@ class TransactionAdmin(admin.ModelAdmin):
                     if isinstance(amount_val, str):
                         amount_val = amount_val.replace(',', '')
                     amount = Decimal(str(amount_val))
-                except:
+                except (ValueError, InvalidOperation):
                     amount = Decimal('0')
 
                 if amount <= 0:
@@ -347,7 +347,7 @@ class TransactionAdmin(admin.ModelAdmin):
                         'description': item['description'],
                     })
                     saved_count += 1
-                except Exception as e:
+                except Exception:
                     skipped_count += 1
 
         if is_ajax:

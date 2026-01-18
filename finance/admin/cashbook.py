@@ -319,7 +319,7 @@ class CashBookAdminMixin:
                         order=saved_count,
                     )
                     saved_count += 1
-                except Exception as e:
+                except Exception:
                     pass
 
             idx += 1
@@ -354,14 +354,15 @@ class CashBookAdminMixin:
                         display_name = category.name
 
                     linked_trans = None
-                    if book_type == 'BANK' and account and amount > 0:
+                    if account and amount > 0:
+                        payment_method = 'BANK' if book_type == 'BANK' else 'CASH'
                         linked_trans = Transaction.objects.create(
                             date=entry_date,
                             transaction_type='EXPENSE',
                             account=account,
                             description=display_name + (f' ({note})' if note else ''),
                             amount=amount,
-                            payment_method='BANK',
+                            payment_method=payment_method,
                             status='APPROVED',
                         )
                         transaction_saved += 1
@@ -381,7 +382,7 @@ class CashBookAdminMixin:
                         linked_transaction=linked_trans,
                     )
                     saved_count += 1
-                except Exception as e:
+                except Exception:
                     pass
 
             idx += 1
@@ -446,7 +447,7 @@ class CashBookAdminMixin:
                             order=saved_count,
                         )
                         saved_count += 1
-                    except Exception as e:
+                    except Exception:
                         pass
 
                 idx += 1
@@ -509,7 +510,7 @@ class CashBookAdminMixin:
                             linked_transaction=linked_trans,
                         )
                         saved_count += 1
-                    except Exception as e:
+                    except Exception:
                         pass
 
                 idx += 1
@@ -638,7 +639,7 @@ class CashBookAdminMixin:
                         order=saved_count,
                     )
                     saved_count += 1
-                except Exception as e:
+                except Exception:
                     pass
 
             idx += 1

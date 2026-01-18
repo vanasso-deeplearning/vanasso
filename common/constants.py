@@ -6,7 +6,7 @@ ACCOUNT_TYPES = [
     ('LIABILITY', '부채'),
     ('EQUITY', '자본'),
     ('INCOME', '수입'),
-    ('EXPENSE', '비용'),
+    ('EXPENSE', '지출'),
 ]
 
 # 결산 상태

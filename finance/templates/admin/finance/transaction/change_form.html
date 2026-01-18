@@ -5,7 +5,8 @@
 <nav aria-label="breadcrumbs">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
-        <li class="breadcrumb-item active" aria-current="page">거래내역추가</li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:finance_transaction_changelist' %}">거래내역조회/삭제</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{% if add %}거래내역추가{% else %}거래내역수정{% endif %}</li>
     </ol>
 </nav>
 {% endblock %}

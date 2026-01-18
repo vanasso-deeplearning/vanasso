@@ -178,8 +178,8 @@ class CashBookCategory(models.Model):
     is_active = models.BooleanField('사용여부', default=True)
 
     class Meta:
-        verbose_name = '출납장과목'
-        verbose_name_plural = '출납장과목'
+        verbose_name = '출납장과목등록및내역조회'
+        verbose_name_plural = '출납장과목등록및내역조회'
         ordering = ['book_type', 'entry_type', 'name']
         unique_together = ['book_type', 'entry_type', 'name']
 
@@ -246,8 +246,8 @@ class CashBook(models.Model):
     updated_at = models.DateTimeField('수정일시', auto_now=True)
 
     class Meta:
-        verbose_name = '출납장'
-        verbose_name_plural = '출납장'
+        verbose_name = '1. 지출/수입 기록 및 보고서 작성'
+        verbose_name_plural = '1. 지출/수입 기록 및 보고서 작성'
         ordering = ['book_type', 'year', 'month', 'entry_type', 'order']
 
     def __str__(self):

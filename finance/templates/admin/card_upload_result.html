@@ -5,7 +5,7 @@
 <nav aria-label="breadcrumbs">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">홈</a></li>
-        <li class="breadcrumb-item"><a href="{% url 'admin:monthly_report' %}">월간보고서</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:monthly_report' %}">지출/수입 기록</a></li>
         <li class="breadcrumb-item"><a href="{% url 'admin:card_upload' %}">카드사용내역입력</a></li>
         <li class="breadcrumb-item active">저장 결과</li>
     </ol>
@@ -107,7 +107,7 @@
 
     <div class="bottom-controls">
         <a href="{% url 'admin:card_upload' %}" class="btn btn-primary">추가 업로드</a>
-        <a href="{% url 'admin:monthly_report' %}" class="btn btn-secondary">월간보고서</a>
+        <a href="{% url 'admin:monthly_report' %}" class="btn btn-secondary">지출/수입 기록</a>
     </div>
 </div>
 {% endblock %}
