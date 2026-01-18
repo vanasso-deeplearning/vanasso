@@ -169,6 +169,31 @@ JAZZMIN_SETTINGS = {
     "custom_links": {
         "finance": [
             {
+                "name": "예금/현금출납장",
+                "url": "admin:cashbook_combined_main",
+                "icon": "fas fa-university",
+            },
+            {
+                "name": "카드사용내역입력",
+                "url": "admin:card_upload",
+                "icon": "fas fa-credit-card",
+            },
+            {
+                "name": "예수금출납장",
+                "url": "admin:deposit_ledger_main",
+                "icon": "fas fa-hand-holding-usd",
+            },
+            {
+                "name": "월간 예산집행 내역",
+                "url": "admin:budget_execution_main",
+                "icon": "fas fa-chart-pie",
+            },
+            {
+                "name": "월간보고서(확정)",
+                "url": "admin:confirmed_report",
+                "icon": "fas fa-check-circle",
+            },
+            {
                 "name": "계정과목등록(예산입력)",
                 "url": "admin:account_main",
                 "icon": "fas fa-cogs",
@@ -177,7 +202,6 @@ JAZZMIN_SETTINGS = {
     },
     "order_with_respect_to": [
         "finance",
-        "finance.CashBook",
         "finance.Budget",
         "finance.Transaction",
         "finance.CashBookCategory",
@@ -187,7 +211,7 @@ JAZZMIN_SETTINGS = {
         "finance.Settlement",
         "auth",
     ],
-    "hide_models": ["finance.Account"],
+    "hide_models": ["finance.Account", "finance.CashBook"],
 }
 
 # Jazzmin UI 설정 - 사이드바 항상 펼침
