@@ -246,7 +246,7 @@ class TransactionAdmin(admin.ModelAdmin):
                     date__month=upload_month,
                     transaction_type='EXPENSE',
                     payment_method='CARD'
-                ).select_related('account').order_by('date')
+                ).select_related('account').order_by('-date')
 
                 existing_items = []
                 existing_total = Decimal('0')
@@ -301,7 +301,7 @@ class TransactionAdmin(admin.ModelAdmin):
 
         saved_count = 0
         skipped_count = 0
-        duplicate_count = 0
+        updated_count = 0
         saved_items = []
 
         with transaction.atomic():
@@ -319,13 +319,27 @@ class TransactionAdmin(admin.ModelAdmin):
                     approval_number = item.get('approval_number', '')
 
                     if approval_number:
-                        exists = Transaction.objects.filter(
+                        existing_txn = Transaction.objects.filter(
                             approval_number=approval_number,
                             payment_method='CARD',
-                        ).exists()
+                        ).first()
 
-                        if exists:
-                            duplicate_count += 1
+                        if existing_txn:
+                            # 계정과목이 다르면 업데이트
+                            if existing_txn.account_id != account.id:
+                                existing_txn.account = account
+                                existing_txn.save(update_fields=['account'])
+                                saved_items.append({
+                                    'index': item['index'],
+                                    'day': txn_date.day,
+                                    'date': txn_date.isoformat(),
+                                    'account_name': account.account_name,
+                                    'amount': int(txn_amount),
+                                    'description': item['description'],
+                                })
+                                updated_count += 1
+                            else:
+                                skipped_count += 1
                             continue
 
                     Transaction.objects.create(
@@ -365,6 +379,7 @@ class TransactionAdmin(admin.ModelAdmin):
 
                 all_items = [{
                     'day': txn.date.day,
+                    'date': txn.date.isoformat(),
                     'account_name': txn.account.account_name,
                     'amount': int(txn.amount),
                     'description': txn.description,
@@ -393,8 +408,8 @@ class TransactionAdmin(admin.ModelAdmin):
 
             return JsonResponse({
                 'saved_count': saved_count,
+                'updated_count': updated_count,
                 'skipped_count': skipped_count,
-                'duplicate_count': duplicate_count,
                 'saved_items': all_items,
                 'saved_indices': saved_indices,
                 'total_amount': int(total_amount),
@@ -412,8 +427,8 @@ class TransactionAdmin(admin.ModelAdmin):
             **self.admin_site.each_context(request),
             'title': '카드사용내역 저장 결과',
             'saved_count': saved_count,
+            'updated_count': updated_count,
             'skipped_count': skipped_count,
-            'duplicate_count': duplicate_count,
             'saved_items': saved_items,
             'total_amount': total_amount,
         }

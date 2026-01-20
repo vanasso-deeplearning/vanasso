@@ -68,18 +68,23 @@ class CashBookCategoryAdmin(admin.ModelAdmin):
         """출납장과목 메인 화면"""
         from datetime import datetime
 
-        book_type = request.GET.get('book_type', 'ALL')
-
-        if book_type == 'ALL':
-            income_categories = CashBookCategory.objects.filter(entry_type='INCOME').order_by('book_type', 'name')
-            expense_categories = CashBookCategory.objects.filter(entry_type='EXPENSE').order_by('book_type', 'name')
-        else:
-            income_categories = CashBookCategory.objects.filter(book_type=book_type, entry_type='INCOME').order_by('name')
-            expense_categories = CashBookCategory.objects.filter(book_type=book_type, entry_type='EXPENSE').order_by('name')
-
-        # 조회용 데이터
-        all_categories = CashBookCategory.objects.filter(is_active=True).order_by('book_type', 'entry_type', 'name')
         current_year = datetime.now().year
+        fiscal_year = int(request.GET.get('fiscal_year', current_year))
+        book_type = request.GET.get('book_type', 'BANK')
+
+        # 해당 회계연도, 장부유형의 과목 조회
+        income_categories = CashBookCategory.objects.filter(
+            fiscal_year=fiscal_year, book_type=book_type, entry_type='INCOME'
+        ).order_by('name')
+        expense_categories = CashBookCategory.objects.filter(
+            fiscal_year=fiscal_year, book_type=book_type, entry_type='EXPENSE'
+        ).order_by('name')
+
+        # 조회용 데이터 (해당 회계연도)
+        all_categories = CashBookCategory.objects.filter(
+            fiscal_year=fiscal_year, is_active=True
+        ).order_by('book_type', 'entry_type', 'name')
+        fiscal_years = list(range(current_year + 1, current_year - 5, -1))
         years = list(range(current_year, current_year - 5, -1))
         months = list(range(1, 13))
 
@@ -87,6 +92,8 @@ class CashBookCategoryAdmin(admin.ModelAdmin):
             **self.admin_site.each_context(request),
             'title': '출납장과목',
             'opts': self.model._meta,
+            'fiscal_year': fiscal_year,
+            'fiscal_years': fiscal_years,
             'book_type': book_type,
             'income_categories': income_categories,
             'expense_categories': expense_categories,
@@ -100,10 +107,13 @@ class CashBookCategoryAdmin(admin.ModelAdmin):
 
     def category_save(self, request):
         """출납장과목 저장"""
+        from datetime import datetime
+
         if request.method != 'POST':
             return redirect('admin:cashbook_category_main')
 
-        book_type = request.POST.get('current_book_type', 'ALL')
+        book_type = request.POST.get('current_book_type', 'BANK')
+        fiscal_year = int(request.POST.get('current_fiscal_year', datetime.now().year))
         saved_count = 0
         deleted_count = 0
 
@@ -131,8 +141,9 @@ class CashBookCategoryAdmin(admin.ModelAdmin):
         # 새 수입과목
         new_income_name = request.POST.get('income_name_new', '').strip()
         new_income_book_type = request.POST.get('income_book_type_new', 'BANK')
-        if new_income_name and new_income_book_type != 'ALL':
+        if new_income_name:
             CashBookCategory.objects.create(
+                fiscal_year=fiscal_year,
                 book_type=new_income_book_type,
                 entry_type='INCOME',
                 name=new_income_name,
@@ -164,8 +175,9 @@ class CashBookCategoryAdmin(admin.ModelAdmin):
         # 새 지출과목
         new_expense_name = request.POST.get('expense_name_new', '').strip()
         new_expense_book_type = request.POST.get('expense_book_type_new', 'BANK')
-        if new_expense_name and new_expense_book_type != 'ALL':
+        if new_expense_name:
             CashBookCategory.objects.create(
+                fiscal_year=fiscal_year,
                 book_type=new_expense_book_type,
                 entry_type='EXPENSE',
                 name=new_expense_name,
@@ -178,7 +190,7 @@ class CashBookCategoryAdmin(admin.ModelAdmin):
             msg += f', 삭제 {deleted_count}건'
         messages.success(request, msg)
 
-        return redirect(f"{request.path.replace('/save/', '')}?book_type={book_type}")
+        return redirect(f"{request.path.replace('/save/', '')}?fiscal_year={fiscal_year}&book_type={book_type}")
 
     def category_delete(self, request, pk):
         """출납장과목 삭제 (AJAX)"""

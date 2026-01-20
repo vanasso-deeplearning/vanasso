@@ -225,6 +225,7 @@
                 <table class="card-table">
                     <thead>
                         <tr>
+                            <th class="col-no">No</th>
                             <th class="col-day">일자</th>
                             <th class="col-desc">내용</th>
                             <th class="col-amount">금액</th>
@@ -234,6 +235,7 @@
                     <tbody>
                         {% for item in existing_items %}
                         <tr>
+                            <td class="col-no">{{ forloop.counter }}</td>
                             <td class="col-day">{{ item.day }}</td>
                             <td class="col-desc">{{ item.account_name }}</td>
                             <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
@@ -243,7 +245,7 @@
                     </tbody>
                     <tfoot>
                         <tr class="subtotal-row">
-                            <td colspan="2">소계</td>
+                            <td colspan="3">소계</td>
                             <td class="col-amount">{{ existing_total|floatformat:0|intcomma }}</td>
                             <td></td>
                         </tr>
@@ -361,12 +363,17 @@ $(document).ready(function() {
             resultHtml += '</div>';
 
             resultHtml += '<table class="card-table">';
-            resultHtml += '<thead><tr><th class="col-day">일자</th><th class="col-desc">내용</th><th class="col-amount">금액</th><th class="col-note">비고</th></tr></thead>';
+            resultHtml += '<thead><tr><th class="col-no">No</th><th class="col-day">일자</th><th class="col-desc">내용</th><th class="col-amount">금액</th><th class="col-note">비고</th></tr></thead>';
             resultHtml += '<tbody>';
 
             if (data.saved_items.length > 0) {
-                data.saved_items.forEach(function(item) {
+                // 일자 역순 정렬
+                var sortedItems = data.saved_items.slice().sort(function(a, b) {
+                    return new Date(b.date) - new Date(a.date);
+                });
+                sortedItems.forEach(function(item, idx) {
                     resultHtml += '<tr>';
+                    resultHtml += '<td class="col-no">' + (idx + 1) + '</td>';
                     resultHtml += '<td class="col-day">' + item.day + '</td>';
                     resultHtml += '<td class="col-desc">' + item.account_name + '</td>';
                     resultHtml += '<td class="col-amount">' + item.amount.toLocaleString() + '</td>';
@@ -374,11 +381,11 @@ $(document).ready(function() {
                     resultHtml += '</tr>';
                 });
             } else {
-                resultHtml += '<tr><td colspan="4" style="text-align:center; color:#888;">저장된 내역이 없습니다.</td></tr>';
+                resultHtml += '<tr><td colspan="5" style="text-align:center; color:#888;">저장된 내역이 없습니다.</td></tr>';
             }
 
             resultHtml += '</tbody>';
-            resultHtml += '<tfoot><tr class="subtotal-row"><td colspan="2">소계</td><td class="col-amount">' + data.total_amount.toLocaleString() + '</td><td></td></tr></tfoot>';
+            resultHtml += '<tfoot><tr class="subtotal-row"><td colspan="3">소계</td><td class="col-amount">' + data.total_amount.toLocaleString() + '</td><td></td></tr></tfoot>';
             resultHtml += '</table>';
 
             document.getElementById('result_area').innerHTML = resultHtml;

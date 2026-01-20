@@ -172,6 +172,7 @@ class CashBookCategory(models.Model):
         ('EXPENSE', '지출'),
     ]
 
+    fiscal_year = models.IntegerField('회계연도', null=True, blank=True)
     book_type = models.CharField('출납장유형', max_length=10, choices=BOOK_TYPES)
     entry_type = models.CharField('구분', max_length=10, choices=ENTRY_TYPES, default='INCOME')
     name = models.CharField('과목명', max_length=50)
@@ -180,11 +181,12 @@ class CashBookCategory(models.Model):
     class Meta:
         verbose_name = '출납장과목등록및내역조회'
         verbose_name_plural = '출납장과목등록및내역조회'
-        ordering = ['book_type', 'entry_type', 'name']
-        unique_together = ['book_type', 'entry_type', 'name']
+        ordering = ['fiscal_year', 'book_type', 'entry_type', 'name']
+        unique_together = ['fiscal_year', 'book_type', 'entry_type', 'name']
 
     def __str__(self):
-        return f"[{self.get_book_type_display()}/{self.get_entry_type_display()}] {self.name}"
+        year_str = f"[{self.fiscal_year}] " if self.fiscal_year else ""
+        return f"{year_str}[{self.get_book_type_display()}/{self.get_entry_type_display()}] {self.name}"
 
 
 class BankAccount(models.Model):

@@ -8,10 +8,20 @@ from django.contrib import messages
 from django.db import transaction
 from django.template.response import TemplateResponse
 from django.http import HttpResponse
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from decimal import Decimal
 
 from ..models import Account, Transaction, CashBook, CashBookCategory, BankAccount, DepositLedger, MonthlySnapshot
+
+
+def get_cashbook_categories(book_type, entry_type, year):
+    """출납장 과목 조회 - 해당 연도 또는 연도 없는 과목"""
+    return CashBookCategory.objects.filter(
+        Q(fiscal_year=year) | Q(fiscal_year__isnull=True),
+        book_type=book_type,
+        entry_type=entry_type,
+        is_active=True
+    ).order_by('name')
 
 
 class CashBookAdminMixin:
@@ -48,9 +58,7 @@ class CashBookAdminMixin:
         _, last_day = monthrange(year, month)
 
         def get_cashbook_data(book_type):
-            income_categories = CashBookCategory.objects.filter(
-                book_type=book_type, entry_type='INCOME', is_active=True
-            ).order_by('name')
+            income_categories = get_cashbook_categories(book_type, 'INCOME', year)
 
             expense_accounts = list(Account.objects.filter(
                 fiscal_year=year,
@@ -67,9 +75,7 @@ class CashBookAdminMixin:
                         is_active=True
                     ).order_by('code'))
 
-            expense_categories = list(CashBookCategory.objects.filter(
-                book_type=book_type, entry_type='EXPENSE', is_active=True
-            ).order_by('name'))
+            expense_categories = list(get_cashbook_categories(book_type, 'EXPENSE', year))
 
             expense_items = []
             for acc in expense_accounts:
@@ -167,9 +173,7 @@ class CashBookAdminMixin:
 
         bank_accounts = BankAccount.objects.filter(is_active=True).order_by('order') if book_type == 'BANK' else []
 
-        income_categories = CashBookCategory.objects.filter(
-            book_type=book_type, entry_type='INCOME', is_active=True
-        ).order_by('name')
+        income_categories = get_cashbook_categories(book_type, 'INCOME', year)
 
         expense_accounts = list(Account.objects.filter(
             fiscal_year=year,
@@ -186,9 +190,7 @@ class CashBookAdminMixin:
                     is_active=True
                 ).order_by('code'))
 
-        expense_categories = list(CashBookCategory.objects.filter(
-            book_type=book_type, entry_type='EXPENSE', is_active=True
-        ).order_by('name'))
+        expense_categories = list(get_cashbook_categories(book_type, 'EXPENSE', year))
 
         expense_items = []
         for acc in expense_accounts:
@@ -561,9 +563,7 @@ class CashBookAdminMixin:
 
         _, last_day = monthrange(year, month)
 
-        expense_categories = list(CashBookCategory.objects.filter(
-            book_type='DEPOSIT', entry_type='EXPENSE', is_active=True
-        ).order_by('name'))
+        expense_categories = list(get_cashbook_categories('DEPOSIT', 'EXPENSE', year))
 
         expense_entries = list(DepositLedger.objects.filter(
             year=year, month=month

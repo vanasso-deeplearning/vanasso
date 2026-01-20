@@ -91,13 +91,19 @@
                 {% csrf_token %}
 
                 <div class="filter-box">
+                    <label>회계연도:</label>
+                    <select id="select_fiscal_year">
+                        {% for year in fiscal_years %}
+                        <option value="{{ year }}" {% if year == fiscal_year %}selected{% endif %}>{{ year }}년</option>
+                        {% endfor %}
+                    </select>
                     <label>장부 유형:</label>
-                    <select id="select_book_type" onchange="filterByBookType()">
-                        <option value="ALL" {% if book_type == 'ALL' %}selected{% endif %}>전체</option>
+                    <select id="select_book_type">
                         <option value="BANK" {% if book_type == 'BANK' %}selected{% endif %}>예금출납장</option>
                         <option value="CASH" {% if book_type == 'CASH' %}selected{% endif %}>현금출납장</option>
                         <option value="DEPOSIT" {% if book_type == 'DEPOSIT' %}selected{% endif %}>예수금출납장</option>
                     </select>
+                    <button type="button" class="btn" onclick="filterByBookType()">조회</button>
                 </div>
 
                 <!-- 수입과목 -->
@@ -189,6 +195,7 @@
                 </table>
 
                 <input type="hidden" name="current_book_type" id="current_book_type" value="{{ book_type }}">
+                <input type="hidden" name="current_fiscal_year" id="current_fiscal_year" value="{{ fiscal_year }}">
             </form>
         </div>
 
@@ -241,8 +248,9 @@
 
 <script>
 function filterByBookType() {
+    var fiscalYear = document.getElementById('select_fiscal_year').value;
     var bookType = document.getElementById('select_book_type').value;
-    window.location.href = '{% url "admin:cashbook_category_main" %}?book_type=' + bookType;
+    window.location.href = '{% url "admin:cashbook_category_main" %}?fiscal_year=' + fiscalYear + '&book_type=' + bookType;
 }
 
 function deleteRow(btn) {
