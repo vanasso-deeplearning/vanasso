@@ -200,6 +200,35 @@
                 </table>
 
             </form>
+
+            <!-- 수동 입력 (form 밖) -->
+            <table class="card-table" style="margin-top: 8px;">
+                <tbody>
+                    <tr class="manual-input-row" style="background: #fffbdd;">
+                        <td class="col-check" style="text-align: left; padding-left: 6px; font-size: 10px; font-weight: bold;">수동</td>
+                        <td class="col-day">
+                            <input type="number" id="manual_day" min="1" max="31" placeholder="일" style="width: 100%; height: 18px; font-size: 10px; border: 1px solid #ccc; border-radius: 2px; text-align: center; box-sizing: border-box;">
+                        </td>
+                        <td class="col-account">
+                            <select id="manual_account" style="width: 100%; height: 18px; font-size: 10px;">
+                                <option value="">선택</option>
+                                {% for account in accounts %}
+                                <option value="{{ account.id }}">{{ account.account_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td class="col-amount">
+                            <input type="number" id="manual_amount" placeholder="금액" style="width: 100%; height: 18px; font-size: 10px; border: 1px solid #ccc; border-radius: 2px; text-align: right; box-sizing: border-box;">
+                        </td>
+                        <td class="col-desc">
+                            <input type="text" id="manual_description" placeholder="가맹점명" style="width: 100%; height: 18px; font-size: 10px; border: 1px solid #ccc; border-radius: 2px; text-align: left; box-sizing: border-box;">
+                        </td>
+                        <td class="col-no">
+                            <button type="button" id="manual_save_btn" style="padding: 2px 6px; font-size: 9px; border: none; border-radius: 2px; background: #28a745; color: white; cursor: pointer;">저장</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
 
         <!-- 오른쪽: 저장 결과 -->
@@ -307,6 +336,74 @@ $(document).ready(function() {
         cb.addEventListener('change', function() {
             checkAll.checked = document.querySelectorAll('.row-check:checked').length === rowChecks.length;
             updateCount();
+        });
+    });
+
+    // 수동 입력 저장 버튼
+    var manualSaveBtn = document.getElementById('manual_save_btn');
+    manualSaveBtn.addEventListener('click', function() {
+        var day = document.getElementById('manual_day').value;
+        var accountId = document.getElementById('manual_account').value;
+        var amount = document.getElementById('manual_amount').value;
+        var description = document.getElementById('manual_description').value;
+
+        if (!day || day < 1 || day > 31) {
+            alert('일자를 올바르게 입력하세요 (1-31).');
+            return;
+        }
+        if (!accountId) {
+            alert('계정과목을 선택하세요.');
+            return;
+        }
+        if (!amount || amount <= 0) {
+            alert('금액을 입력하세요.');
+            return;
+        }
+        if (!description) {
+            alert('가맹점명을 입력하세요.');
+            return;
+        }
+
+        manualSaveBtn.disabled = true;
+        manualSaveBtn.textContent = '...';
+
+        var formData = new FormData();
+        formData.append('year', {{ upload_year }});
+        formData.append('month', {{ upload_month }});
+        formData.append('day', day);
+        formData.append('account_id', accountId);
+        formData.append('amount', amount);
+        formData.append('description', description);
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+        fetch('{% url "admin:card_manual_save" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (data.success) {
+                alert('저장 완료 (승인번호: ' + data.approval_number + ')');
+                // 입력 필드 초기화
+                document.getElementById('manual_day').value = '';
+                document.getElementById('manual_account').value = '';
+                document.getElementById('manual_amount').value = '';
+                document.getElementById('manual_description').value = '';
+                // 페이지 새로고침하여 결과 반영
+                location.reload();
+            } else {
+                alert('저장 실패: ' + data.error);
+            }
+            manualSaveBtn.disabled = false;
+            manualSaveBtn.textContent = '저장';
+        })
+        .catch(function(error) {
+            alert('저장 중 오류가 발생했습니다.');
+            manualSaveBtn.disabled = false;
+            manualSaveBtn.textContent = '저장';
         });
     });
 

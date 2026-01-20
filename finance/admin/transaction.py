@@ -30,6 +30,7 @@ class TransactionAdmin(admin.ModelAdmin):
             path('card-upload/save/', self.admin_site.admin_view(self.card_upload_save), name='card_upload_save'),
             path('card-delete/', self.admin_site.admin_view(self.card_delete_items), name='card_delete_items'),
             path('card-query/', self.admin_site.admin_view(self.card_query), name='card_query'),
+            path('card-manual-save/', self.admin_site.admin_view(self.card_manual_save), name='card_manual_save'),
         ]
         return custom_urls + urls
 
@@ -364,12 +365,15 @@ class TransactionAdmin(admin.ModelAdmin):
                     txn_amount = Decimal(item['amount'])
                     approval_number = item.get('approval_number', '')
 
-                    # 중복 체크: 승인번호가 있으면 승인번호로, 없으면 날짜+금액+가맹점명으로
+                    # 중복 체크: 같은 연/월 내에서만 검사
                     existing_txn = None
                     if approval_number:
+                        # 승인번호가 있으면 승인번호 + 연/월로 중복 체크
                         existing_txn = Transaction.objects.filter(
                             approval_number=approval_number,
                             payment_method='CARD',
+                            date__year=txn_date.year,
+                            date__month=txn_date.month,
                         ).first()
                     else:
                         # 승인번호 없는 경우 날짜+금액+가맹점명으로 중복 체크
@@ -584,3 +588,65 @@ class TransactionAdmin(admin.ModelAdmin):
             return JsonResponse({'error': '잘못된 연도 또는 월입니다.'}, status=400)
         except Exception as e:
             return JsonResponse({'error': f'조회 중 오류: {e}'}, status=500)
+
+    def card_manual_save(self, request):
+        """카드 수동 입력 저장 API"""
+        import random
+        import string
+        from datetime import datetime, date
+
+        if request.method != 'POST':
+            return JsonResponse({'success': False, 'error': 'POST 요청만 가능합니다.'}, status=405)
+
+        try:
+            year = int(request.POST.get('year', 0))
+            month = int(request.POST.get('month', 0))
+            day = int(request.POST.get('day', 0))
+            account_id = int(request.POST.get('account_id', 0))
+            amount = Decimal(request.POST.get('amount', '0'))
+            description = request.POST.get('description', '').strip()
+
+            if not all([year, month, day, account_id, amount, description]):
+                return JsonResponse({'success': False, 'error': '모든 필드를 입력해주세요.'}, status=400)
+
+            # 날짜 유효성 검사
+            try:
+                txn_date = date(year, month, day)
+            except ValueError:
+                return JsonResponse({'success': False, 'error': '유효하지 않은 날짜입니다.'}, status=400)
+
+            # 계정과목 조회
+            try:
+                account = Account.objects.get(pk=account_id)
+            except Account.DoesNotExist:
+                return JsonResponse({'success': False, 'error': '계정과목을 찾을 수 없습니다.'}, status=400)
+
+            # 7자리 임의 승인번호 생성 (M + 6자리 숫자, M=Manual)
+            approval_number = 'M' + ''.join(random.choices(string.digits, k=6))
+
+            # 중복 체크 (같은 승인번호가 이미 있는지)
+            while Transaction.objects.filter(approval_number=approval_number).exists():
+                approval_number = 'M' + ''.join(random.choices(string.digits, k=6))
+
+            # Transaction 생성 (status='APPROVED'로 해야 예산집행내역에 반영됨)
+            txn = Transaction.objects.create(
+                date=txn_date,
+                transaction_type='EXPENSE',
+                account=account,
+                description=description,
+                amount=amount,
+                payment_method='CARD',
+                approval_number=approval_number,
+                status='APPROVED',
+            )
+
+            return JsonResponse({
+                'success': True,
+                'id': txn.id,
+                'approval_number': approval_number,
+            })
+
+        except (ValueError, InvalidOperation) as e:
+            return JsonResponse({'success': False, 'error': f'입력값 오류: {e}'}, status=400)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': f'저장 중 오류: {e}'}, status=500)
