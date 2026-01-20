@@ -1,5 +1,10 @@
 {% extends "admin/base_site.html" %}
-{% load i18n static %}
+{% load i18n humanize static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+{% endblock %}
 
 {% block breadcrumbs %}
 <nav aria-label="breadcrumbs">
@@ -13,45 +18,49 @@
 
 {% block content %}
 <style>
-    .upload-container {
-        max-width: 700px;
+    .two-column-container { max-width: 1400px; width: 1400px; }
+    .two-column { display: flex; gap: 30px; }
+    .column { flex: 1; min-width: 0; width: 50%; }
+    .column-header {
+        text-align: center; margin-bottom: 10px;
+        padding: 8px 12px; background: #f8f9fa; border-radius: 4px;
     }
-    .upload-container h1 {
-        font-size: 20px;
-        margin-bottom: 20px;
-        color: #333;
-    }
+    .column-header h2 { font-size: 16px; margin: 0; }
+    .column-header .summary { font-size: 12px; color: #666; margin-top: 4px; }
+
     .upload-box {
         background: #fff;
         border: 1px solid #ddd;
         border-left: 4px solid #417690;
         border-radius: 4px;
-        padding: 25px;
-        margin-bottom: 20px;
+        padding: 20px;
+        margin-bottom: 15px;
     }
-    .upload-box h2 {
-        font-size: 16px;
+    .upload-box h3 {
+        font-size: 14px;
         color: #417690;
-        margin: 0 0 20px 0;
-        padding-bottom: 10px;
+        margin: 0 0 15px 0;
+        padding-bottom: 8px;
         border-bottom: 1px solid #eee;
     }
     .form-group {
-        margin-bottom: 20px;
+        margin-bottom: 15px;
     }
     .form-group label {
         display: block;
         font-weight: bold;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
         color: #333;
+        font-size: 13px;
     }
     .form-group input[type="file"] {
-        padding: 10px;
+        padding: 8px;
         border: 2px dashed #ccc;
         border-radius: 4px;
         width: 100%;
         background: #f9f9f9;
         cursor: pointer;
+        font-size: 12px;
     }
     .form-group input[type="file"]:hover {
         border-color: #417690;
@@ -61,34 +70,33 @@
         background: #f8f9fa;
         border: 1px solid #e9ecef;
         border-radius: 4px;
-        padding: 15px;
-        margin-top: 15px;
+        padding: 12px;
+        margin-top: 10px;
+        font-size: 12px;
     }
     .help-text strong {
         display: block;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
         color: #417690;
     }
     .help-text p {
-        margin: 5px 0;
+        margin: 3px 0;
         color: #666;
-        font-size: 13px;
     }
     .help-text .note {
         color: #dc3545;
-        font-size: 12px;
-        margin-top: 10px;
+        margin-top: 8px;
     }
     .btn-row {
         display: flex;
         gap: 10px;
-        margin-top: 20px;
+        margin-top: 15px;
     }
     .btn {
-        padding: 10px 25px;
+        padding: 8px 20px;
         border: none;
         border-radius: 4px;
-        font-size: 14px;
+        font-size: 13px;
         cursor: pointer;
         text-decoration: none;
         display: inline-block;
@@ -102,42 +110,354 @@
         color: white;
         text-decoration: none;
     }
-    .btn-secondary {
-        background: #6c757d;
-        color: white;
+
+    /* 오른쪽 조회 영역 */
+    .query-box {
+        background: #e7f1ff; padding: 10px 15px; border-radius: 4px;
+        margin-bottom: 10px; font-size: 13px;
+        display: flex; align-items: center; gap: 10px;
     }
-    .btn-secondary:hover {
-        background: #545b62;
-        color: white;
-        text-decoration: none;
+    .query-box select {
+        padding: 6px 10px; font-size: 13px;
+        border: 1px solid #ccc; border-radius: 3px;
+    }
+    .query-box button {
+        padding: 6px 15px; background: #417690; color: white;
+        border: none; border-radius: 3px; cursor: pointer; font-size: 13px;
+    }
+    .query-box button:hover { background: #205067; }
+
+    .card-table {
+        width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed;
+    }
+    .card-table th, .card-table td {
+        border: 1px solid #999; padding: 0 4px; text-align: center;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        height: 22px; line-height: 22px; box-sizing: border-box;
+    }
+    .card-table th { background: #e8e8e8; font-weight: normal; }
+    .card-table tr:nth-child(even) { background: #f9f9f9; }
+    .card-table tr:hover { background: #eef5ff; }
+    .card-table .col-check { width: 28px; }
+    .card-table input[type="checkbox"] { margin: 0; vertical-align: middle; }
+    .card-table .col-no { width: 32px; }
+    .card-table .col-day { width: 35px; }
+    .card-table .col-desc { text-align: left; padding-left: 6px; }
+    .card-table .col-amount { width: 80px; text-align: right; padding-right: 6px; }
+    .card-table .col-content { text-align: left; padding-left: 6px; }
+    .card-table .subtotal-row { background: #f5f5f5; font-weight: bold; }
+
+    .result-summary {
+        background: #e7f1ff; padding: 6px 10px; border-radius: 4px;
+        margin-bottom: 8px; font-size: 12px;
+        height: 40px; box-sizing: border-box;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .result-summary .success { color: #28a745; font-weight: bold; }
+
+    .btn-confirm {
+        padding: 4px 12px; font-size: 11px; border: none;
+        border-radius: 3px; cursor: pointer;
+        background: #28a745; color: white; margin-left: 8px;
+    }
+    .btn-confirm:hover { background: #218838; }
+    .btn-cancel-confirm {
+        padding: 4px 12px; font-size: 11px; border: none;
+        border-radius: 3px; cursor: pointer;
+        background: #dc3545; color: white; margin-left: 8px;
+    }
+    .btn-cancel-confirm:hover { background: #c82333; }
+    .confirm-status {
+        font-size: 11px; color: #28a745; font-weight: bold;
+    }
+    .confirm-status.not-confirmed { color: #6c757d; }
+
+    .result-placeholder {
+        display: flex; align-items: center; justify-content: center;
+        height: 200px; background: #f8f9fa; border: 2px dashed #ddd;
+        border-radius: 8px; color: #888; font-size: 13px;
     }
 </style>
 
-<div class="upload-container">
-    <h1>카드사용내역입력</h1>
-
-    <form method="post" enctype="multipart/form-data">
-        {% csrf_token %}
-
-        <div class="upload-box">
-            <h2>카드 사용 내역 엑셀 업로드</h2>
-
-            <div class="form-group">
-                <label for="excel_file">엑셀 파일 선택</label>
-                <input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls" required>
+<div class="two-column-container">
+    <div class="two-column">
+        <!-- 왼쪽: 엑셀 업로드 -->
+        <div class="column">
+            <div class="column-header">
+                <h2>카드사용내역 엑셀 업로드</h2>
             </div>
 
-            <div class="help-text">
-                <strong>카드사 엑셀 파일 형식</strong>
-                <p>필수 컬럼: 이용일자, 가맹점명, 매출금액, 취소구분</p>
-                <p class="note">※ 취소구분이 '정상'인 건만 업로드됩니다.</p>
-            </div>
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                <div class="upload-box">
+                    <h3>카드 사용 내역 엑셀 파일</h3>
+
+                    <div class="form-group">
+                        <label for="excel_file">엑셀 파일 선택</label>
+                        <input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls" required>
+                    </div>
+
+                    <div class="help-text">
+                        <strong>카드사 엑셀 파일 형식</strong>
+                        <p>필수 컬럼: 이용일자, 가맹점명, 매출금액, 취소구분</p>
+                        <p class="note">※ 취소구분이 '정상'인 건만 업로드됩니다.</p>
+                    </div>
+                </div>
+
+                <div class="btn-row">
+                    <button type="submit" class="btn btn-primary">업로드</button>
+                </div>
+            </form>
         </div>
 
-        <div class="btn-row">
-            <button type="submit" class="btn btn-primary">업로드</button>
-            <a href="{% url 'admin:monthly_report' %}" class="btn btn-secondary">목록</a>
+        <!-- 오른쪽: 카드사용내역 조회 -->
+        <div class="column">
+            <div class="column-header">
+                <h2>카드사용내역 조회</h2>
+                <div class="summary" id="result_summary_header">연월을 선택하고 조회 버튼을 클릭하세요</div>
+            </div>
+
+            <div class="query-box" style="flex-wrap: wrap;">
+                <span><strong>조회:</strong></span>
+                <select id="query_year">
+                    {% for y in year_range %}
+                    <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}년</option>
+                    {% endfor %}
+                </select>
+                <select id="query_month">
+                    {% for m in month_range %}
+                    <option value="{{ m }}" {% if m == current_month %}selected{% endif %}>{{ m }}월</option>
+                    {% endfor %}
+                </select>
+                <select id="query_account" style="min-width: 120px;">
+                    <option value="">전체 계정과목</option>
+                    {% for acc in expense_accounts %}
+                    <option value="{{ acc.id }}">{{ acc.account_name }}</option>
+                    {% endfor %}
+                </select>
+                <button type="button" id="query_btn">조회</button>
+            </div>
+
+            <div id="result_area">
+                <div class="result-placeholder">
+                    연월을 선택하고 조회 버튼을 클릭하세요
+                </div>
+            </div>
         </div>
-    </form>
+    </div>
 </div>
+
 {% endblock %}
+
+{% block extrajs %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+$(document).ready(function() {
+    var queryBtn = document.getElementById('query_btn');
+
+    queryBtn.addEventListener('click', function() {
+        var year = document.getElementById('query_year').value;
+        var month = document.getElementById('query_month').value;
+        var accountId = document.getElementById('query_account').value;
+
+        queryBtn.disabled = true;
+        queryBtn.textContent = '조회 중...';
+
+        var queryUrl = '{% url "admin:card_query" %}?year=' + year + '&month=' + month;
+        if (accountId) {
+            queryUrl += '&account_id=' + accountId;
+        }
+
+        fetch(queryUrl, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            var resultHtml = '';
+
+            if (data.items.length > 0) {
+                resultHtml += '<div class="result-summary">';
+                resultHtml += '<button type="button" class="btn-delete-selected" onclick="deleteSelectedItems()" style="padding: 4px 12px; font-size: 11px; border: none; border-radius: 3px; cursor: pointer; background: #dc3545; color: white;">선택삭제</button>';
+                resultHtml += '<span class="success" style="margin-left: 8px;">' + data.item_count + '건 / ' + data.total_amount.toLocaleString() + '원</span>';
+                resultHtml += '<span style="margin-left: auto;">';
+                if (data.is_confirmed) {
+                    resultHtml += '<span class="confirm-status">확정됨 (' + data.confirmed_at + ')</span>';
+                    resultHtml += '<button type="button" class="btn-cancel-confirm" onclick="cancelConfirm(' + year + ', ' + month + ')">확정해제</button>';
+                } else {
+                    resultHtml += '<span class="confirm-status not-confirmed">미확정</span>';
+                    resultHtml += '<button type="button" class="btn-confirm" onclick="confirmCard(' + year + ', ' + month + ')">확정</button>';
+                }
+                resultHtml += '</span>';
+                resultHtml += '</div>';
+
+                resultHtml += '<table class="card-table" id="result_table">';
+                resultHtml += '<thead><tr><th class="col-check"><input type="checkbox" id="result_check_all" title="전체 선택"></th><th class="col-no">No</th><th class="col-desc">비고</th><th class="col-day">일자</th><th class="col-amount">금액</th><th class="col-content">내용</th></tr></thead>';
+                resultHtml += '<tbody>';
+
+                data.items.forEach(function(item, idx) {
+                    resultHtml += '<tr data-txn-id="' + item.id + '">';
+                    resultHtml += '<td class="col-check"><input type="checkbox" class="result-row-check" data-txn-id="' + item.id + '"></td>';
+                    resultHtml += '<td class="col-no">' + (idx + 1) + '</td>';
+                    resultHtml += '<td class="col-desc">' + item.description + '</td>';
+                    resultHtml += '<td class="col-day">' + item.day + '</td>';
+                    resultHtml += '<td class="col-amount">' + item.amount.toLocaleString() + '</td>';
+                    resultHtml += '<td class="col-content">' + item.account_name + '</td>';
+                    resultHtml += '</tr>';
+                });
+
+                resultHtml += '</tbody>';
+                resultHtml += '<tfoot><tr class="subtotal-row"><td colspan="4">소계</td><td class="col-amount">' + data.total_amount.toLocaleString() + '</td><td></td></tr></tfoot>';
+                resultHtml += '</table>';
+            } else {
+                resultHtml = '<div class="result-placeholder">' + year + '년 ' + month + '월 카드사용내역이 없습니다.</div>';
+            }
+
+            document.getElementById('result_area').innerHTML = resultHtml;
+            document.getElementById('result_summary_header').textContent = year + '년 ' + month + '월 카드지출 ' + data.item_count + '건';
+
+            // 체크박스 이벤트 초기화
+            initResultCheckboxes();
+
+            queryBtn.disabled = false;
+            queryBtn.textContent = '조회';
+        })
+        .catch(function(error) {
+            alert('조회 중 오류가 발생했습니다.');
+            queryBtn.disabled = false;
+            queryBtn.textContent = '조회';
+        });
+    });
+});
+
+// 저장 결과 테이블 체크박스 이벤트 초기화
+function initResultCheckboxes() {
+    var resultCheckAll = document.getElementById('result_check_all');
+    var resultRowChecks = document.querySelectorAll('.result-row-check');
+
+    if (resultCheckAll) {
+        resultCheckAll.addEventListener('change', function() {
+            resultRowChecks.forEach(function(cb) {
+                cb.checked = resultCheckAll.checked;
+            });
+        });
+    }
+
+    resultRowChecks.forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            if (resultCheckAll) {
+                resultCheckAll.checked = document.querySelectorAll('.result-row-check:checked').length === resultRowChecks.length;
+            }
+        });
+    });
+}
+
+// 선택 삭제 함수
+function deleteSelectedItems() {
+    var checked = document.querySelectorAll('.result-row-check:checked');
+    if (checked.length === 0) {
+        alert('삭제할 내역을 선택하세요.');
+        return;
+    }
+
+    if (!confirm(checked.length + '건의 카드사용내역을 삭제하시겠습니까?')) {
+        return;
+    }
+
+    var txnIds = [];
+    checked.forEach(function(cb) {
+        txnIds.push(cb.dataset.txnId);
+    });
+
+    var formData = new FormData();
+    formData.append('txn_ids', JSON.stringify(txnIds));
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+    fetch('{% url "admin:card_delete_items" %}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message);
+            // 조회 버튼 클릭하여 새로고침
+            document.getElementById('query_btn').click();
+        } else {
+            alert('삭제 중 오류가 발생했습니다: ' + data.error);
+        }
+    })
+    .catch(function(error) {
+        alert('삭제 중 오류가 발생했습니다.');
+    });
+}
+
+// 확정 버튼 클릭
+function confirmCard(year, month) {
+    if (!confirm(year + '년 ' + month + '월 카드사용내역을 확정하시겠습니까?')) {
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('year', year);
+    formData.append('month', month);
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+    fetch('{% url "admin:snapshot_confirm_card" %}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message);
+            document.getElementById('query_btn').click();
+        } else {
+            alert('확정 중 오류가 발생했습니다.');
+        }
+    })
+    .catch(function(error) {
+        alert('확정 중 오류가 발생했습니다.');
+    });
+}
+
+// 확정해제 버튼 클릭
+function cancelConfirm(year, month) {
+    if (!confirm(year + '년 ' + month + '월 카드사용내역 확정을 해제하시겠습니까?')) {
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+    fetch('{% url "admin:snapshot_cancel" snapshot_type="CARD_EXPENSE" year=0 month=0 %}'.replace('/0/', '/' + year + '/').replace('/0/', '/' + month + '/'), {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message);
+            document.getElementById('query_btn').click();
+        } else {
+            alert('확정해제 중 오류가 발생했습니다.');
+        }
+    })
+    .catch(function(error) {
+        alert('확정해제 중 오류가 발생했습니다.');
+    });
+}
+</script>
+{% endblock extrajs %}

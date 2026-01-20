@@ -28,6 +28,8 @@ class TransactionAdmin(admin.ModelAdmin):
         custom_urls = [
             path('card-upload/', self.admin_site.admin_view(self.card_upload_view), name='card_upload'),
             path('card-upload/save/', self.admin_site.admin_view(self.card_upload_save), name='card_upload_save'),
+            path('card-delete/', self.admin_site.admin_view(self.card_delete_items), name='card_delete_items'),
+            path('card-query/', self.admin_site.admin_view(self.card_query), name='card_query'),
         ]
         return custom_urls + urls
 
@@ -84,10 +86,25 @@ class TransactionAdmin(admin.ModelAdmin):
         """카드 엑셀 업로드 화면"""
         from datetime import datetime
 
+        current_year = datetime.now().year
+        current_month = datetime.now().month
+
+        # 지출 계정과목 목록 조회
+        expense_accounts = Account.objects.filter(
+            fiscal_year=current_year,
+            account_type='EXPENSE',
+            is_active=True
+        ).order_by('code')
+
         context = {
             **self.admin_site.each_context(request),
             'title': '카드 엑셀 업로드',
             'opts': self.model._meta,
+            'year_range': range(current_year - 1, current_year + 2),
+            'month_range': range(1, 13),
+            'current_year': current_year,
+            'current_month': current_month,
+            'expense_accounts': expense_accounts,
         }
 
         if request.method == 'POST' and request.FILES.get('excel_file'):
@@ -233,14 +250,19 @@ class TransactionAdmin(admin.ModelAdmin):
                 messages.error(request, '유효한 카드 내역이 없습니다.')
                 return TemplateResponse(request, 'admin/card_upload.html', context)
 
-            current_year = datetime.now().year
+            # 카드 내역의 연도를 기준으로 계정과목 조회
+            card_year = card_items[0]['date'].year
             accounts = Account.objects.filter(
-                fiscal_year=current_year,
+                fiscal_year=card_year,
                 account_type='EXPENSE'
             ).order_by('code')
 
             if not accounts.exists():
-                accounts = Account.objects.filter(account_type='EXPENSE').order_by('fiscal_year', 'code')
+                # 해당 연도 계정이 없으면 현재 연도로 fallback
+                accounts = Account.objects.filter(
+                    fiscal_year=datetime.now().year,
+                    account_type='EXPENSE'
+                ).order_by('code')
 
             context['card_items'] = card_items
             context['accounts'] = accounts
@@ -275,6 +297,7 @@ class TransactionAdmin(admin.ModelAdmin):
                 existing_total = Decimal('0')
                 for txn in existing_card_expenses:
                     existing_items.append({
+                        'id': txn.id,
                         'day': txn.date.day,
                         'account_name': txn.account.account_name if txn.account else '',
                         'amount': int(txn.amount),
@@ -341,29 +364,39 @@ class TransactionAdmin(admin.ModelAdmin):
                     txn_amount = Decimal(item['amount'])
                     approval_number = item.get('approval_number', '')
 
+                    # 중복 체크: 승인번호가 있으면 승인번호로, 없으면 날짜+금액+가맹점명으로
+                    existing_txn = None
                     if approval_number:
                         existing_txn = Transaction.objects.filter(
                             approval_number=approval_number,
                             payment_method='CARD',
                         ).first()
+                    else:
+                        # 승인번호 없는 경우 날짜+금액+가맹점명으로 중복 체크
+                        existing_txn = Transaction.objects.filter(
+                            date=txn_date,
+                            amount=txn_amount,
+                            description=item['description'],
+                            payment_method='CARD',
+                        ).first()
 
-                        if existing_txn:
-                            # 계정과목이 다르면 업데이트
-                            if existing_txn.account_id != account.id:
-                                existing_txn.account = account
-                                existing_txn.save(update_fields=['account'])
-                                saved_items.append({
-                                    'index': item['index'],
-                                    'day': txn_date.day,
-                                    'date': txn_date.isoformat(),
-                                    'account_name': account.account_name,
-                                    'amount': int(txn_amount),
-                                    'description': item['description'],
-                                })
-                                updated_count += 1
-                            else:
-                                skipped_count += 1
-                            continue
+                    if existing_txn:
+                        # 계정과목이 다르면 업데이트
+                        if existing_txn.account_id != account.id:
+                            existing_txn.account = account
+                            existing_txn.save(update_fields=['account'])
+                            saved_items.append({
+                                'index': item['index'],
+                                'day': txn_date.day,
+                                'date': txn_date.isoformat(),
+                                'account_name': account.account_name,
+                                'amount': int(txn_amount),
+                                'description': item['description'],
+                            })
+                            updated_count += 1
+                        else:
+                            skipped_count += 1
+                        continue
 
                     Transaction.objects.create(
                         date=txn_date,
@@ -401,6 +434,7 @@ class TransactionAdmin(admin.ModelAdmin):
                 ).order_by('date').select_related('account')
 
                 all_items = [{
+                    'id': txn.id,
                     'day': txn.date.day,
                     'date': txn.date.isoformat(),
                     'account_name': txn.account.account_name,
@@ -456,3 +490,97 @@ class TransactionAdmin(admin.ModelAdmin):
             'total_amount': total_amount,
         }
         return render(request, 'admin/card_upload_result.html', context)
+
+    def card_delete_items(self, request):
+        """카드 내역 선택 삭제"""
+        if request.method != 'POST':
+            return JsonResponse({'success': False, 'error': 'POST 요청만 허용됩니다.'}, status=405)
+
+        try:
+            txn_ids_str = request.POST.get('txn_ids', '[]')
+            txn_ids = json.loads(txn_ids_str)
+
+            if not txn_ids:
+                return JsonResponse({'success': False, 'error': '삭제할 내역이 없습니다.'}, status=400)
+
+            # 삭제 실행
+            deleted_count = 0
+            with transaction.atomic():
+                for txn_id in txn_ids:
+                    try:
+                        txn = Transaction.objects.get(pk=txn_id)
+                        txn.delete()
+                        deleted_count += 1
+                    except Transaction.DoesNotExist:
+                        pass
+
+            return JsonResponse({
+                'success': True,
+                'message': f'{deleted_count}건이 삭제되었습니다.',
+                'deleted_count': deleted_count,
+            })
+
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': f'삭제 중 오류: {e}'}, status=500)
+
+    def card_query(self, request):
+        """카드사용내역 조회 API"""
+        try:
+            year = int(request.GET.get('year', 0))
+            month = int(request.GET.get('month', 0))
+            account_id = request.GET.get('account_id', '')
+
+            if not year or not month:
+                return JsonResponse({'error': '연도와 월을 지정해주세요.'}, status=400)
+
+            # 해당 월의 카드사용내역 조회
+            card_items = Transaction.objects.filter(
+                date__year=year,
+                date__month=month,
+                transaction_type='EXPENSE',
+                payment_method='CARD'
+            )
+
+            # 계정과목 필터 적용
+            if account_id:
+                card_items = card_items.filter(account_id=account_id)
+
+            card_items = card_items.select_related('account').order_by('date')
+
+            items = []
+            total_amount = Decimal('0')
+            for txn in card_items:
+                items.append({
+                    'id': txn.id,
+                    'day': txn.date.day,
+                    'account_name': txn.account.account_name if txn.account else '',
+                    'amount': int(txn.amount),
+                    'description': txn.description or '',
+                })
+                total_amount += txn.amount
+
+            # 확정 여부 확인
+            snapshot = MonthlySnapshot.objects.filter(
+                fiscal_year=year,
+                month=month,
+                snapshot_type='CARD_EXPENSE',
+                is_confirmed=True
+            ).first()
+
+            is_confirmed = snapshot is not None
+            confirmed_at = snapshot.confirmed_at.strftime('%Y-%m-%d %H:%M') if snapshot and snapshot.confirmed_at else None
+
+            return JsonResponse({
+                'items': items,
+                'total_amount': int(total_amount),
+                'item_count': len(items),
+                'is_confirmed': is_confirmed,
+                'confirmed_at': confirmed_at,
+            })
+
+        except ValueError:
+            return JsonResponse({'error': '잘못된 연도 또는 월입니다.'}, status=400)
+        except Exception as e:
+            return JsonResponse({'error': f'조회 중 오류: {e}'}, status=500)

@@ -356,7 +356,8 @@ class CashBookAdminMixin:
                         display_name = category.name
 
                     linked_trans = None
-                    if account and amount > 0:
+                    if account and amount != 0:
+                        # 마이너스 금액도 Transaction 생성 (환급 등)
                         payment_method = 'BANK' if book_type == 'BANK' else 'CASH'
                         linked_trans = Transaction.objects.create(
                             date=entry_date,
@@ -484,7 +485,8 @@ class CashBookAdminMixin:
                             display_name = category.name
 
                         linked_trans = None
-                        if account and amount > 0:
+                        if account and amount != 0:
+                            # 마이너스 금액도 Transaction 생성 (환급 등)
                             payment_method = 'BANK' if book_type == 'BANK' else 'CASH'
                             linked_trans = Transaction.objects.create(
                                 date=entry_date,

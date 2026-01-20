@@ -218,7 +218,8 @@
             <div id="result_area">
                 {% if existing_items %}
                 <div class="result-summary">
-                    <span class="success">{{ existing_count }}건 / {{ existing_total|floatformat:0|intcomma }}원</span>
+                    <button type="button" class="btn-delete-selected" onclick="deleteSelectedItems()" style="padding: 4px 12px; font-size: 11px; border: none; border-radius: 3px; cursor: pointer; background: #dc3545; color: white;">선택삭제</button>
+                    <span class="success" style="margin-left: 8px;">{{ existing_count }}건 / {{ existing_total|floatformat:0|intcomma }}원</span>
                     <span style="margin-left: auto;">
                         {% if is_confirmed %}
                         <span class="confirm-status">확정됨 ({{ confirmed_at }})</span>
@@ -229,9 +230,10 @@
                         {% endif %}
                     </span>
                 </div>
-                <table class="card-table">
+                <table class="card-table" id="result_table">
                     <thead>
                         <tr>
+                            <th class="col-check"><input type="checkbox" id="result_check_all" title="전체 선택"></th>
                             <th class="col-no">No</th>
                             <th class="col-note">비고</th>
                             <th class="col-day">일자</th>
@@ -241,7 +243,8 @@
                     </thead>
                     <tbody>
                         {% for item in existing_items %}
-                        <tr>
+                        <tr data-txn-id="{{ item.id }}">
+                            <td class="col-check"><input type="checkbox" class="result-row-check" data-txn-id="{{ item.id }}"></td>
                             <td class="col-no">{{ forloop.counter }}</td>
                             <td class="col-note">{{ item.description }}</td>
                             <td class="col-day">{{ item.day }}</td>
@@ -252,7 +255,7 @@
                     </tbody>
                     <tfoot>
                         <tr class="subtotal-row">
-                            <td colspan="3">소계</td>
+                            <td colspan="4">소계</td>
                             <td class="col-amount">{{ existing_total|floatformat:0|intcomma }}</td>
                             <td></td>
                         </tr>
@@ -350,7 +353,8 @@ $(document).ready(function() {
             var resultHtml = '';
 
             resultHtml += '<div class="result-summary">';
-            resultHtml += '<span class="success">' + data.saved_count + '건 저장 완료</span>';
+            resultHtml += '<button type="button" class="btn-delete-selected" onclick="deleteSelectedItems()" style="padding: 4px 12px; font-size: 11px; border: none; border-radius: 3px; cursor: pointer; background: #dc3545; color: white;">선택삭제</button>';
+            resultHtml += '<span class="success" style="margin-left: 8px;">' + data.saved_count + '건 저장 완료</span>';
             if (data.duplicate_count > 0) {
                 resultHtml += '<span class="duplicate"> (중복 ' + data.duplicate_count + '건 제외)</span>';
             }
@@ -369,8 +373,8 @@ $(document).ready(function() {
             resultHtml += '</span>';
             resultHtml += '</div>';
 
-            resultHtml += '<table class="card-table">';
-            resultHtml += '<thead><tr><th class="col-no">No</th><th class="col-note">비고</th><th class="col-day">일자</th><th class="col-amount">금액</th><th class="col-content">내용</th></tr></thead>';
+            resultHtml += '<table class="card-table" id="result_table">';
+            resultHtml += '<thead><tr><th class="col-check"><input type="checkbox" id="result_check_all" title="전체 선택"></th><th class="col-no">No</th><th class="col-note">비고</th><th class="col-day">일자</th><th class="col-amount">금액</th><th class="col-content">내용</th></tr></thead>';
             resultHtml += '<tbody>';
 
             if (data.saved_items.length > 0) {
@@ -379,7 +383,8 @@ $(document).ready(function() {
                     return new Date(a.date) - new Date(b.date);
                 });
                 sortedItems.forEach(function(item, idx) {
-                    resultHtml += '<tr>';
+                    resultHtml += '<tr data-txn-id="' + item.id + '">';
+                    resultHtml += '<td class="col-check"><input type="checkbox" class="result-row-check" data-txn-id="' + item.id + '"></td>';
                     resultHtml += '<td class="col-no">' + (idx + 1) + '</td>';
                     resultHtml += '<td class="col-note">' + item.description + '</td>';
                     resultHtml += '<td class="col-day">' + item.day + '</td>';
@@ -388,15 +393,18 @@ $(document).ready(function() {
                     resultHtml += '</tr>';
                 });
             } else {
-                resultHtml += '<tr><td colspan="5" style="text-align:center; color:#888;">저장된 내역이 없습니다.</td></tr>';
+                resultHtml += '<tr><td colspan="6" style="text-align:center; color:#888;">저장된 내역이 없습니다.</td></tr>';
             }
 
             resultHtml += '</tbody>';
-            resultHtml += '<tfoot><tr class="subtotal-row"><td colspan="3">소계</td><td class="col-amount">' + data.total_amount.toLocaleString() + '</td><td></td></tr></tfoot>';
+            resultHtml += '<tfoot><tr class="subtotal-row"><td colspan="4">소계</td><td class="col-amount">' + data.total_amount.toLocaleString() + '</td><td></td></tr></tfoot>';
             resultHtml += '</table>';
 
             document.getElementById('result_area').innerHTML = resultHtml;
             document.getElementById('result_summary_header').textContent = '이번 달 카드지출 ' + data.saved_items.length + '건';
+
+            // 체크박스 이벤트 재초기화
+            initResultCheckboxes();
 
             // 저장된 행 표시 (배경색 변경)
             if (data.saved_indices) {
@@ -456,6 +464,76 @@ function confirmCard(year, month) {
     })
     .catch(function(error) {
         alert('확정 중 오류가 발생했습니다.');
+    });
+}
+
+// 저장 결과 테이블 체크박스 이벤트 초기화
+function initResultCheckboxes() {
+    var resultCheckAll = document.getElementById('result_check_all');
+    var resultRowChecks = document.querySelectorAll('.result-row-check');
+
+    if (resultCheckAll) {
+        resultCheckAll.addEventListener('change', function() {
+            resultRowChecks.forEach(function(cb) {
+                cb.checked = resultCheckAll.checked;
+            });
+        });
+    }
+
+    resultRowChecks.forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            if (resultCheckAll) {
+                resultCheckAll.checked = document.querySelectorAll('.result-row-check:checked').length === resultRowChecks.length;
+            }
+        });
+    });
+}
+
+// 페이지 로드 시 초기화
+$(document).ready(function() {
+    initResultCheckboxes();
+});
+
+// 선택 삭제 함수
+function deleteSelectedItems() {
+    var checked = document.querySelectorAll('.result-row-check:checked');
+    if (checked.length === 0) {
+        alert('삭제할 내역을 선택하세요.');
+        return;
+    }
+
+    if (!confirm(checked.length + '건의 카드사용내역을 삭제하시겠습니까?')) {
+        return;
+    }
+
+    var txnIds = [];
+    checked.forEach(function(cb) {
+        txnIds.push(cb.dataset.txnId);
+    });
+
+    var formData = new FormData();
+    formData.append('txn_ids', JSON.stringify(txnIds));
+    formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+    fetch('{% url "admin:card_delete_items" %}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message);
+            // 페이지 새로고침하여 결과 반영
+            location.reload();
+        } else {
+            alert('삭제 중 오류가 발생했습니다: ' + data.error);
+        }
+    })
+    .catch(function(error) {
+        alert('삭제 중 오류가 발생했습니다.');
     });
 }
 
