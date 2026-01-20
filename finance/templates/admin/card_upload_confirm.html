@@ -34,7 +34,7 @@
         display: flex; align-items: center; gap: 8px;
         margin-bottom: 8px; padding: 6px 10px;
         background: #e7f1ff; border-radius: 4px; font-size: 12px;
-        min-height: 40px; box-sizing: border-box;
+        box-sizing: border-box;
     }
     .bulk-apply .select2-container { min-width: 200px; }
     .bulk-apply .select2-container--default .select2-selection--single {
@@ -54,22 +54,26 @@
         width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed;
     }
     .card-table th, .card-table td {
-        border: 1px solid #999; padding: 2px 4px; text-align: center;
+        border: 1px solid #999; padding: 0 4px; text-align: center;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        height: 22px; line-height: 22px; box-sizing: border-box;
     }
     .card-table th { background: #e8e8e8; font-weight: normal; }
     .card-table tr:nth-child(even) { background: #f9f9f9; }
     .card-table tr:hover { background: #eef5ff; }
     .card-table .col-check { width: 28px; }
+    .card-table input[type="checkbox"] { margin: 0; vertical-align: middle; }
     .card-table .col-no { width: 32px; }
     .card-table .col-day { width: 35px; }
-    .card-table .col-desc { text-align: left; padding-left: 6px; }
+    .card-table .col-desc { text-align: right; padding-right: 6px; }
     .card-table .col-amount { width: 80px; text-align: right; padding-right: 6px; }
     .card-table .col-account { width: 140px; }
     .card-table .col-note { text-align: left; padding-left: 6px; }
+    .card-table .col-content { text-align: left; padding-left: 6px; }
     .card-table select {
-        width: 100%; padding: 2px 4px; font-size: 10px;
+        width: 100%; padding: 0 2px; font-size: 10px;
         border: 1px solid #ccc; border-radius: 2px;
+        height: 18px; line-height: 18px; box-sizing: border-box;
     }
     .card-table .subtotal-row { background: #f5f5f5; font-weight: bold; }
 
@@ -91,8 +95,11 @@
     .result-summary {
         background: #e7f1ff; padding: 6px 10px; border-radius: 4px;
         margin-bottom: 8px; font-size: 12px;
-        min-height: 40px; box-sizing: border-box;
+        height: 40px; box-sizing: border-box;
         display: flex; align-items: center; gap: 8px;
+    }
+    .bulk-apply, .result-summary {
+        height: 40px;
     }
     .result-summary .success { color: #28a745; font-weight: bold; }
     .result-summary .duplicate { color: #dc3545; }
@@ -157,21 +164,18 @@
                     <thead>
                         <tr>
                             <th class="col-check"><input type="checkbox" id="check_all" title="전체 선택"></th>
-                            <th class="col-no">No</th>
                             <th class="col-day">일자</th>
-                            <th class="col-desc">가맹점명</th>
-                            <th class="col-amount">금액</th>
                             <th class="col-account">계정과목</th>
+                            <th class="col-amount">금액</th>
+                            <th class="col-desc">가맹점명</th>
+                            <th class="col-no">No</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in card_items %}
                         <tr data-index="{{ item.index }}">
                             <td class="col-check"><input type="checkbox" class="row-check" data-index="{{ item.index }}"></td>
-                            <td class="col-no">{{ forloop.counter }}</td>
                             <td class="col-day">{{ item.date.day }}</td>
-                            <td class="col-desc" title="{{ item.description }}">{{ item.description }}</td>
-                            <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
                             <td class="col-account">
                                 <select name="account_{{ item.index }}" data-index="{{ item.index }}">
                                     <option value="">선택</option>
@@ -180,14 +184,17 @@
                                     {% endfor %}
                                 </select>
                             </td>
+                            <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
+                            <td class="col-desc" title="{{ item.description }}">{{ item.description }}</td>
+                            <td class="col-no">{{ forloop.counter }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     <tfoot>
                         <tr class="subtotal-row">
-                            <td colspan="4">합계</td>
+                            <td colspan="3">합계</td>
                             <td class="col-amount">{{ total_amount|floatformat:0|intcomma }}</td>
-                            <td></td>
+                            <td colspan="2"></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -226,20 +233,20 @@
                     <thead>
                         <tr>
                             <th class="col-no">No</th>
-                            <th class="col-day">일자</th>
-                            <th class="col-desc">내용</th>
-                            <th class="col-amount">금액</th>
                             <th class="col-note">비고</th>
+                            <th class="col-day">일자</th>
+                            <th class="col-amount">금액</th>
+                            <th class="col-content">내용</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in existing_items %}
                         <tr>
                             <td class="col-no">{{ forloop.counter }}</td>
-                            <td class="col-day">{{ item.day }}</td>
-                            <td class="col-desc">{{ item.account_name }}</td>
-                            <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
                             <td class="col-note">{{ item.description }}</td>
+                            <td class="col-day">{{ item.day }}</td>
+                            <td class="col-amount">{{ item.amount|floatformat:0|intcomma }}</td>
+                            <td class="col-content">{{ item.account_name }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -363,21 +370,21 @@ $(document).ready(function() {
             resultHtml += '</div>';
 
             resultHtml += '<table class="card-table">';
-            resultHtml += '<thead><tr><th class="col-no">No</th><th class="col-day">일자</th><th class="col-desc">내용</th><th class="col-amount">금액</th><th class="col-note">비고</th></tr></thead>';
+            resultHtml += '<thead><tr><th class="col-no">No</th><th class="col-note">비고</th><th class="col-day">일자</th><th class="col-amount">금액</th><th class="col-content">내용</th></tr></thead>';
             resultHtml += '<tbody>';
 
             if (data.saved_items.length > 0) {
-                // 일자 역순 정렬
+                // 일자순 정렬
                 var sortedItems = data.saved_items.slice().sort(function(a, b) {
-                    return new Date(b.date) - new Date(a.date);
+                    return new Date(a.date) - new Date(b.date);
                 });
                 sortedItems.forEach(function(item, idx) {
                     resultHtml += '<tr>';
                     resultHtml += '<td class="col-no">' + (idx + 1) + '</td>';
-                    resultHtml += '<td class="col-day">' + item.day + '</td>';
-                    resultHtml += '<td class="col-desc">' + item.account_name + '</td>';
-                    resultHtml += '<td class="col-amount">' + item.amount.toLocaleString() + '</td>';
                     resultHtml += '<td class="col-note">' + item.description + '</td>';
+                    resultHtml += '<td class="col-day">' + item.day + '</td>';
+                    resultHtml += '<td class="col-amount">' + item.amount.toLocaleString() + '</td>';
+                    resultHtml += '<td class="col-content">' + item.account_name + '</td>';
                     resultHtml += '</tr>';
                 });
             } else {

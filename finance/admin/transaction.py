@@ -128,6 +128,7 @@ class TransactionAdmin(admin.ModelAdmin):
                 'cancel_amount': ['취소매출금액', '취소금액'],
                 'date': ['이용일자', '이용일', '거래일자', '거래일', '승인일자', '승인일'],
                 'amount': ['매출금액', '이용금액', '승인금액', '결제금액', '금액'],
+                'exchange_fee': ['환가료'],
                 'description': ['가맹점명', '가맹점', '이용가맹점', '이용처', '사용처'],
                 'card_number': ['카드번호', '카드 번호', '카드NO'],
                 'approval_number': ['승인번호', '승인NO', '승인 번호'],
@@ -143,6 +144,7 @@ class TransactionAdmin(admin.ModelAdmin):
             cancel_amount_col = find_column(df, column_mapping['cancel_amount'])
             date_col = find_column(df, column_mapping['date'])
             amount_col = find_column(df, column_mapping['amount'])
+            exchange_fee_col = find_column(df, column_mapping['exchange_fee'])
             desc_col = find_column(df, column_mapping['description'])
             card_col = find_column(df, column_mapping['card_number'])
             approval_col = find_column(df, column_mapping['approval_number'])
@@ -194,8 +196,29 @@ class TransactionAdmin(admin.ModelAdmin):
                 except (ValueError, InvalidOperation):
                     amount = Decimal('0')
 
+                # 환가료 합산
+                if exchange_fee_col:
+                    try:
+                        fee_val = row.get(exchange_fee_col, 0)
+                        if isinstance(fee_val, str):
+                            fee_val = fee_val.replace(',', '')
+                        if fee_val and str(fee_val).strip():
+                            amount += Decimal(str(fee_val))
+                    except (ValueError, InvalidOperation):
+                        pass
+
                 if amount <= 0:
                     continue
+
+                # 승인번호 처리 (NaN 값 처리)
+                approval_number = ''
+                if approval_col:
+                    approval_val = row.get(approval_col, '')
+                    if pd.notna(approval_val):
+                        approval_number = str(approval_val).strip()
+                        # 'nan' 문자열 제거
+                        if approval_number.lower() == 'nan':
+                            approval_number = ''
 
                 card_items.append({
                     'index': idx,
@@ -203,7 +226,7 @@ class TransactionAdmin(admin.ModelAdmin):
                     'description': str(row.get(desc_col, '')).strip() if desc_col else '',
                     'amount': amount,
                     'card_number': str(row.get(card_col, '')).strip() if card_col else '',
-                    'approval_number': str(row.get(approval_col, '')).strip() if approval_col else '',
+                    'approval_number': approval_number,
                 })
 
             if not card_items:
@@ -246,7 +269,7 @@ class TransactionAdmin(admin.ModelAdmin):
                     date__month=upload_month,
                     transaction_type='EXPENSE',
                     payment_method='CARD'
-                ).select_related('account').order_by('-date')
+                ).select_related('account').order_by('date')
 
                 existing_items = []
                 existing_total = Decimal('0')
@@ -375,7 +398,7 @@ class TransactionAdmin(admin.ModelAdmin):
                     date__month=month,
                     payment_method='CARD',
                     transaction_type='EXPENSE',
-                ).order_by('-date').select_related('account')
+                ).order_by('date').select_related('account')
 
                 all_items = [{
                     'day': txn.date.day,

@@ -115,6 +115,22 @@
         background: #6c757d;
         color: white;
     }
+    .btn-merge {
+        padding: 4px 12px;
+        font-size: 12px;
+        background: #17a2b8;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 10px;
+    }
+    .btn-merge:hover {
+        background: #138496;
+    }
+    .btn-merge.active {
+        background: #28a745;
+    }
 </style>
 
 <div class="confirmed-card-container">
@@ -137,8 +153,14 @@
         <button type="button" class="btn-go" onclick="goToDate()">조회</button>
     </div>
 
-    <div class="section-title"><span>카드 지출 내역</span><span class="unit">(단위:원)</span></div>
-    <table class="card-table">
+    <div class="section-title">
+    <span>카드 지출 내역</span>
+    <span>
+        <button type="button" class="btn-merge" id="btn_merge" onclick="toggleMergeView()">계정과목통합</button>
+        <span class="unit">(단위:원)</span>
+    </span>
+</div>
+    <table class="card-table" id="card_table">
         <thead>
             <tr>
                 <th class="col-no">No</th>
@@ -148,7 +170,7 @@
                 <th class="col-desc">가맹점명</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="card_tbody">
             {% for item in card_items %}
             <tr>
                 <td>{{ forloop.counter }}</td>
@@ -166,7 +188,7 @@
         <tfoot>
             <tr class="subtotal-row">
                 <td colspan="3">합계</td>
-                <td class="col-amount">{{ total_amount|floatformat:0|intcomma }}</td>
+                <td class="col-amount" id="total_amount">{{ total_amount|floatformat:0|intcomma }}</td>
                 <td></td>
             </tr>
         </tfoot>
@@ -176,9 +198,6 @@
         총 <strong>{{ item_count }}건</strong> / <strong>{{ total_amount|floatformat:0|intcomma }}원</strong>
     </div>
 
-    <div class="bottom-controls">
-        <a href="{% url 'admin:confirmed_report' %}" class="btn btn-secondary">목록으로</a>
-    </div>
 </div>
 
 <script>
@@ -186,6 +205,110 @@ function goToDate() {
     var year = document.getElementById('select_year').value;
     var month = document.getElementById('select_month').value;
     window.location.href = "{% url 'admin:confirmed_card' year=1 month=1 %}".replace('/1/1/', '/' + year + '/' + month + '/');
+}
+
+// 원본 데이터 저장
+var originalItems = [
+    {% for item in card_items %}
+    { day: {{ item.day }}, account_name: "{{ item.account_name }}", amount: {{ item.amount }}, description: "{{ item.description|escapejs }}" },
+    {% endfor %}
+];
+
+var isMerged = false;
+
+function toggleMergeView() {
+    var btn = document.getElementById('btn_merge');
+    var tbody = document.getElementById('card_tbody');
+    var summarySection = document.querySelector('.summary-section');
+
+    if (!isMerged) {
+        // 통합 뷰로 전환
+        var merged = mergeByDateAndAccount(originalItems);
+        renderTable(merged, true);
+        btn.textContent = '상세보기';
+        btn.classList.add('active');
+        summarySection.innerHTML = '총 <strong>' + merged.length + '건</strong> / <strong>' + formatNumber(sumAmount(merged)) + '원</strong> (통합)';
+    } else {
+        // 원본 뷰로 복원
+        renderTable(originalItems, false);
+        btn.textContent = '계정과목통합';
+        btn.classList.remove('active');
+        summarySection.innerHTML = '총 <strong>' + originalItems.length + '건</strong> / <strong>' + formatNumber(sumAmount(originalItems)) + '원</strong>';
+    }
+    isMerged = !isMerged;
+}
+
+function mergeByDateAndAccount(items) {
+    // 같은 일자 + 같은 계정과목끼리 합산
+    var map = {};
+    items.forEach(function(item) {
+        var key = item.day + '_' + item.account_name;
+        if (!map[key]) {
+            map[key] = {
+                day: item.day,
+                account_name: item.account_name,
+                amount: 0,
+                descriptions: []
+            };
+        }
+        map[key].amount += item.amount;
+        if (item.description) {
+            map[key].descriptions.push(item.description);
+        }
+    });
+
+    // 배열로 변환하고 일자순 정렬
+    var result = [];
+    for (var key in map) {
+        var m = map[key];
+        result.push({
+            day: m.day,
+            account_name: m.account_name,
+            amount: m.amount,
+            descriptions: m.descriptions  // 개별 가맹점명 배열 유지
+        });
+    }
+    result.sort(function(a, b) {
+        if (a.day !== b.day) return a.day - b.day;
+        return a.account_name.localeCompare(b.account_name);
+    });
+    return result;
+}
+
+function renderTable(items, isMergedView) {
+    var tbody = document.getElementById('card_tbody');
+    var html = '';
+
+    if (items.length === 0) {
+        html = '<tr><td colspan="5" style="color: #888;">카드 사용 내역이 없습니다.</td></tr>';
+    } else {
+        items.forEach(function(item, idx) {
+            html += '<tr>';
+            html += '<td>' + (idx + 1) + '</td>';
+            html += '<td>' + item.day + '</td>';
+            html += '<td class="col-account">' + item.account_name + '</td>';
+            html += '<td class="col-amount">' + formatNumber(item.amount) + '</td>';
+            // 통합 뷰이고 descriptions 배열이 있는 경우 콤마로 연결
+            if (isMergedView && item.descriptions && item.descriptions.length > 0) {
+                html += '<td class="col-desc">' + item.descriptions.join(', ') + '</td>';
+            } else {
+                html += '<td class="col-desc">' + (item.description || '') + '</td>';
+            }
+            html += '</tr>';
+        });
+    }
+    tbody.innerHTML = html;
+
+    // 합계 업데이트
+    document.getElementById('total_amount').textContent = formatNumber(sumAmount(items));
+}
+
+function sumAmount(items) {
+    return items.reduce(function(sum, item) { return sum + item.amount; }, 0);
+}
+
+function formatNumber(num) {
+    return num.toLocaleString('ko-KR');
 }
 </script>
 {% endblock %}
